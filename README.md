@@ -1,3 +1,5 @@
+![logo](https://github.com/user-attachments/assets/844775d1-815b-4121-9acc-ca849734258e)
+
 # ClothoidX
 Draw 2D clothoid curves, or build a spline using points and their tangent angle (G1 fitting) or using points, their tangent angles and their curvature values (G2 fitting). 
 
