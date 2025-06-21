@@ -75,6 +75,11 @@ namespace ClothoidX
             return c;
         }
 
+        public static ClothoidCurve G1Spline(List<Vector3> inputPolyline)
+        {
+            return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
+        }
+
         /// <summary>
         /// The solution to the G1 clothoid interpolation 
         /// problem as given by Walton & Meek in:

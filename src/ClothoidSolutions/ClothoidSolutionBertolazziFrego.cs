@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace ClothoidX
 {
-    public class ClothoidSolutionBertolazzi
+    public class ClothoidSolutionBertolazziFrego
     {
         /// <summary>
         /// Threshold for A to solve the fresnel equation with different solutions
