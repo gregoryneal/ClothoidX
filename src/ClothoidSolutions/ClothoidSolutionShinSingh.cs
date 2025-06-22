@@ -1,12 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Collections.Generic;
 
 
 namespace ClothoidX
 {
-
     /// <summary>
     /// A solution to solve a general clothoid curve with the constraint that every point in the input polyline must be passed through by the resulting curve.
     /// 
@@ -147,18 +146,18 @@ namespace ClothoidX
             //guess curve
             ClothoidCurve curve = new ClothoidCurve()
             {
-                Offset = Postures[0].Position,
+                Offset = Postures[0].PositionD,
                 AngleOffset = Postures[0].Angle
             };
             ClothoidCurve testCurve = new ClothoidCurve();
 
             //final position guess
-            Vector3 guess;
+            Mathc.VectorDouble guess;
             //double guessx;
             //double guessz;
             //temp variable to find min distance from guess to goal
-            float minDist = float.PositiveInfinity;
-            float goalDist = 0.01f;
+            double minDist = double.PositiveInfinity;
+            double goalDist = 0.01f;
 
             for (int i = 0; i + 1 < Postures.Count; i++)
             {
@@ -171,11 +170,11 @@ namespace ClothoidX
                 //first l1 and l2 guess, 1/3 of the average of the two small circular arcs connecting them.
                 // Guess the initial total arc lengths of the first and second clothoid segments
                 //radians                
-                thetao = Math.Atan2(posture1.Position.Z - posture1.CircleCenter.Z, posture1.Position.X - posture1.CircleCenter.X) * 180 / Math.PI;
-                thetaf = Math.Atan2(posture2.Position.Z - posture1.CircleCenter.Z, posture2.Position.X - posture1.CircleCenter.X) * 180 / Math.PI;
+                thetao = Math.Atan2(posture1.Z - posture1.CircleCenterD.Z, posture1.X - posture1.CircleCenterD.X) * 180 / Math.PI;
+                thetaf = Math.Atan2(posture2.Z - posture1.CircleCenterD.Z, posture2.X - posture1.CircleCenterD.X) * 180 / Math.PI;
                 s11 = posture1.GetArcLength(thetaf - thetao);
-                thetao = Math.Atan2(posture1.Position.Z - posture2.CircleCenter.Z, posture1.Position.X - posture2.CircleCenter.X) * 180 / Math.PI;
-                thetaf = Math.Atan2(posture2.Position.Z - posture2.CircleCenter.Z, posture2.Position.X - posture2.CircleCenter.X) * 180 / Math.PI;
+                thetao = Math.Atan2(posture1.Z - posture2.CircleCenterD.Z, posture1.X - posture2.CircleCenterD.X) * 180 / Math.PI;
+                thetaf = Math.Atan2(posture2.Z - posture2.CircleCenterD.Z, posture2.X - posture2.CircleCenterD.X) * 180 / Math.PI;
                 s22 = posture2.GetArcLength(thetaf - thetao);
                 s1 = s2 = (s11 + s22) / 6; //first clothoid
 
@@ -210,14 +209,14 @@ namespace ClothoidX
                     {
                         //circle segment from p1 to p2 with radius 1/ki
                         if (posture2.isMirroredX) ki = -ki;
-                        ClothoidSegment s = new ClothoidSegment((float)ki, 0, (float)s11);
+                        ClothoidSegment s = new ClothoidSegment(ki, 0, s11);
                         //s.isMirroredX = posture2.isMirroredX; //set the mirrored flag
                         curve.AddSegment(s);
                         yield return curve;
                     }
                     else
                     {
-                        curve.AddSegment(new ClothoidSegment(0, 0, Vector3.Distance(posture1.Position, posture2.Position)));
+                        curve.AddSegment(new ClothoidSegment(0, 0, Mathc.VectorDouble.Distance(posture1.PositionD, posture2.PositionD)));
                         yield return curve;
                     }
                     continue;
@@ -306,16 +305,16 @@ namespace ClothoidX
 
                         Console.WriteLine($"Varying s1: Yielding new curve with parameters: sign: {sign}, s1: {tempS1}, s2: {s2}, s3: {s3}, ki: {ki}, k1f: {k1f}, k2f: {k2f}, kf: {kf}, x: {x}");
                         testCurve.Reset();
-                        ClothoidSegment ca = new ClothoidSegment((float)ki, (float)x, (float)tempS1);
-                        ClothoidSegment cb = new ClothoidSegment((float)k1f, (float)-x, (float)s2);
-                        ClothoidSegment cc = new ClothoidSegment((float)k2f, (float)x, (float)s3);
+                        ClothoidSegment ca = new ClothoidSegment(ki, x, tempS1);
+                        ClothoidSegment cb = new ClothoidSegment(k1f, -x, s2);
+                        ClothoidSegment cc = new ClothoidSegment(k2f, x, s3);
 
 
-                        testCurve.AddSegment(new ClothoidSegment((float)ki, (float)x, (float)tempS1))
-                             .AddSegment(new ClothoidSegment((float)k1f, (float)-x, (float)s2))
-                             .AddSegment(new ClothoidSegment((float)k2f, (float)x, (float)s3));
+                        testCurve.AddSegment(new ClothoidSegment(ki, x, tempS1))
+                             .AddSegment(new ClothoidSegment(k1f, -x, s2))
+                             .AddSegment(new ClothoidSegment(k2f, x, s3));
                         guess = testCurve.Endpoint;
-                        float dist = Vector3.Distance(guess, posture2.Position);
+                        double dist = Mathc.VectorDouble.Distance(guess, posture2.PositionD);
 
                         yield return curve + testCurve;
 
@@ -392,9 +391,9 @@ namespace ClothoidX
 
                         Console.WriteLine($"Varying s2: Yielding new curve with parameters: s1: {s1}, s2: {tempS2}, s3: {s3}, ki: {ki}, k1f: {k1f}, k2f: {k2f}, x: {x}");
                         testCurve.Reset();
-                        testCurve.AddSegment(new ClothoidSegment((float)ki, (float)x, (float)s1))
-                             .AddSegment(new ClothoidSegment((float)k1f, (float)-x, (float)tempS2))
-                             .AddSegment(new ClothoidSegment((float)k2f, (float)x, (float)s3));
+                        testCurve.AddSegment(new ClothoidSegment(ki, x, s1))
+                             .AddSegment(new ClothoidSegment(k1f, -x, tempS2))
+                             .AddSegment(new ClothoidSegment(k2f, x, s3));
 
                         guess = testCurve.Endpoint;
                         float dist = Vector3.Distance(guess, posture2.Position);
@@ -469,7 +468,7 @@ namespace ClothoidX
 
             //guess curve
             ClothoidCurve curve = new ClothoidCurve();
-            curve.Offset = posture1.Position;
+            curve.Offset = posture1.PositionD;
             curve.AngleOffset = posture1.Angle;
             ClothoidCurve testCurve = new ClothoidCurve();
 
@@ -482,11 +481,11 @@ namespace ClothoidX
             //first l1 and l2 guess, 1/3 of the average of the two small circular arcs connecting them.
             // Guess the initial total arc lengths of the first and second clothoid segments
             //radians                
-            thetao = Math.Atan2(posture1.Position.Z - posture1.CircleCenter.Z, posture1.Position.X - posture1.CircleCenter.X) * 180 / Math.PI;
-            thetaf = Math.Atan2(posture2.Position.Z - posture1.CircleCenter.Z, posture2.Position.X - posture1.CircleCenter.X) * 180 / Math.PI;
+            thetao = Math.Atan2(posture1.Z - posture1.CircleCenterD.Z, posture1.X - posture1.CircleCenterD.X) * 180 / Math.PI;
+            thetaf = Math.Atan2(posture2.Z - posture1.CircleCenterD.Z, posture2.X - posture1.CircleCenterD.X) * 180 / Math.PI;
             s11 = posture1.GetArcLength(thetaf - thetao);
-            thetao = Math.Atan2(posture1.Position.Z - posture2.CircleCenter.Z, posture1.Position.X - posture2.CircleCenter.X) * 180 / Math.PI;
-            thetaf = Math.Atan2(posture2.Position.Z - posture2.CircleCenter.Z, posture2.Position.X - posture2.CircleCenter.X) * 180 / Math.PI;
+            thetao = Math.Atan2(posture1.Z - posture2.CircleCenterD.Z, posture1.X - posture2.CircleCenterD.X) * 180 / Math.PI;
+            thetaf = Math.Atan2(posture2.Z - posture2.CircleCenterD.Z, posture2.X - posture2.CircleCenterD.X) * 180 / Math.PI;
             s22 = posture2.GetArcLength(thetaf - thetao);
             s1 = s2 = (s11 + s22) / 6; //first clothoid
 
@@ -519,13 +518,13 @@ namespace ClothoidX
                 if (ki > 0)
                 {
                     //circle segment from p1 to p2 with radius 1/ki
-                    ClothoidSegment s = new ClothoidSegment((float)ki, 0, (float)s11);
+                    ClothoidSegment s = new ClothoidSegment(ki, 0, s11);
                     curve.AddSegment(s);
                     yield return curve;
                 }
                 else
                 {
-                    curve.AddSegment(new ClothoidSegment(0, 0, Vector3.Distance(posture1.Position, posture2.Position)));
+                    curve.AddSegment(new ClothoidSegment(0, 0, Mathc.VectorDouble.Distance(posture1.PositionD, posture2.PositionD)));
                     yield return curve;
                 }
                 yield break;
@@ -615,9 +614,9 @@ namespace ClothoidX
                     /*ClothoidSegment ca = new ClothoidSegment((float)ki, (float)x, (float)tempS1);
                     ClothoidSegment cb = new ClothoidSegment((float)k1f, (float)-x, (float)s2);
                     ClothoidSegment cc = new ClothoidSegment((float)k2f, (float)x, (float)s3);*/
-                    testCurve.AddSegment(new ClothoidSegment((float)ki, (float)x, (float)tempS1))
-                            .AddSegment(new ClothoidSegment((float)k1f, (float)-x, (float)s2))
-                            .AddSegment(new ClothoidSegment((float)k2f, (float)x, (float)s3));
+                    testCurve.AddSegment(new ClothoidSegment(ki, x, tempS1))
+                            .AddSegment(new ClothoidSegment(k1f, -x, s2))
+                            .AddSegment(new ClothoidSegment(k2f, x, s3));
                     guess = testCurve.Endpoint;
                     float dist = Vector3.Distance(guess, posture2.Position);
 
@@ -700,9 +699,9 @@ namespace ClothoidX
 
                     Console.WriteLine($"Varying s2: Yielding new curve with parameters: s1: {s1}, s2: {tempS2}, s3: {s3}, ki: {ki}, k1f: {k1f}, k2f: {k2f}, x: {x}");
                     testCurve.Reset();
-                    testCurve.AddSegment(new ClothoidSegment((float)ki, (float)x, (float)s1))
-                            .AddSegment(new ClothoidSegment((float)k1f, (float)-x, (float)tempS2))
-                            .AddSegment(new ClothoidSegment((float)k2f, (float)x, (float)s3));
+                    testCurve.AddSegment(new ClothoidSegment(ki, x, (float)s1))
+                            .AddSegment(new ClothoidSegment(k1f, (float)-x, (float)tempS2))
+                            .AddSegment(new ClothoidSegment(k2f, x, (float)s3));
 
                     guess = testCurve.Endpoint;
                     float dist = Vector3.Distance(guess, posture2.Position);

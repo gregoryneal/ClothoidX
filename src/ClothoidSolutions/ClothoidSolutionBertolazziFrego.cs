@@ -1,6 +1,6 @@
 using System;
-using System.Numerics;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace ClothoidX
 {
@@ -25,17 +25,6 @@ namespace ClothoidX
         /// </summary>
         private static readonly double[] CF = new double[6] { 2.989696028701907, 0.716228953608281, -0.458969738821509, -0.502821153340377, 0.261062141752652, -0.045854475238709 };
 
-        public static double[] SolveG1Parameters(HermiteData point1, HermiteData point2)
-        {
-            ClothoidCurve c = G1(point1.x, point1.z, point1.tangentAngle, point2.x, point2.z, point2.tangentAngle);
-            return new double[4] { c[0].Sharpness, c[0].StartCurvature, c.AngleOffset, c.TotalArcLength };
-        }
-
-        public static double[] SolveG1Parameters(ClothoidCurve curve)
-        {
-            return new double[4] { curve[0].Sharpness, curve[0].StartCurvature, curve.AngleOffset, curve.TotalArcLength };
-        }
-
         public static ClothoidCurve G1Spline(Posture[] data)
         {
             ClothoidCurve c = new ClothoidCurve();
@@ -45,10 +34,20 @@ namespace ClothoidX
                 c += G1(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
             }
 
-            c.Offset = data[0].Position;
+            c.Offset = data[0].PositionD;
             c.AngleOffset = data[0].Angle;
 
             return c;
+        }
+
+        public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> points)
+        {
+            return G1Spline(Posture.CalculatePostures(points).ToArray());
+        }
+
+        public static ClothoidCurve G1Spline(List<Vector3> points)
+        {
+            return G1Spline(Posture.CalculatePostures(points).ToArray());
         }
 
         /// <summary>
@@ -64,25 +63,20 @@ namespace ClothoidX
         /// <param name="x1">end point x</param>
         /// <param name="z1">end point z</param>
         /// <param name="t1">end point tangent angle in radians</param>
-        /// <param name="addOffsets">If true, the returned curve will be offet and rotated by the first point and its tangent. We might want to leave it false if we are building a G1 spline, in which case we would only offset and rotate the entire G1 curve by the first point after building the whole thing. See <see cref="G1Spline"/></param>
         /// <returns></returns>
         public static ClothoidCurve G1(double x0, double z0, double t0, double x1, double z1, double t1)
         {
             double dx = x1 - x0;
             double dz = z1 - z0;
-
             double phi = Math.Atan2(dz, dx);
-
             double r = Math.Sqrt((dx * dx) + (dz * dz));
-
             double phi0 = NormalizeAngle(t0 - phi);
             double phi1 = NormalizeAngle(t1 - phi);
-
             double e = 1E-4;
-            //UnityEngine.Debug.Log($"phi0: {phi0} | phi1: {phi1}");
+
             if ((Math.Abs(phi0) < e && Math.Abs(phi1) == 0) || (phi0 + Math.PI < e && phi1 - Math.PI < e) || (phi0 - Math.PI < e && phi1 + Math.PI < e))
             {
-                return ClothoidCurve.FromSegments(new ClothoidSegment(0, 0, (float)r));
+                return new ClothoidCurve().AddLine(r);
             }
 
             double d = phi1 - phi0;
@@ -95,152 +89,29 @@ namespace ClothoidX
             double dg;
             List<double[]> IntCS;
             int u = 0;
-
             double A = InitialGuessA(phi0, phi1);
-            //UnityEngine.Debug.LogWarning($"A guess: {A}");
+
             do
             {
                 IntCS = GeneralizedFresnelCS(3, 2 * A, d - A, phi0);
                 g = IntCS[1][0];
                 dg = IntCS[0][2] - IntCS[0][1];
-                A -= g / dg;//
-                //UnityEngine.Debug.LogWarning($"u: {u} | g: {g} | dg: {dg} | new A -= {g / dg}: {A}");
+                A -= g / dg;
             } while (++u < 30 && Math.Abs(g) > ROOT_TOLERANCE);
 
-            if (Math.Abs(g) > ROOT_TOLERANCE)
-            {
-                //Assert.IsTrue(Math.Abs(g) <= ROOT_TOLERANCE);
-                //could not find a root
-                //return new ClothoidCurve();
-            }
-            else
-            {
-                //UnityEngine.Debug.Log($"Convergence iterations: {u}\nAmax: {Amax}\nTmax: {Tmax}\nA: {A}");
-            }
-
-            //UnityEngine.Debug.Log($"Number of attempts: {u}");
             double[] intCS;
 
             intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
             double s = r / intCS[0];
-
-
-            //Assert.IsTrue(s > 0);
-            if (s <= 0)
-            {
-                //UnityEngine.Debug.LogWarning($"ArcLength Negative or Zero! s: {s} | r: {r} | intCS[0]: {intCS[0]} | intCS[1]: {intCS[1]} | phi0: {phi0 * 180 / Math.PI} | phi1: {phi1 * 180 / Math.PI} | A: {A} | d: {d * 180 / Math.PI}");
-                return G1CurveM(x0, z0, t0, x1, z1, t1);
-                //return new();
-            }
 
             double startCurvature = (d - A) / s;
             double sharpness = 2 * A / (s * s);
 
             ClothoidCurve c = ClothoidCurve.FromSegments(new ClothoidSegment(startCurvature, sharpness, s));
-            c.Offset = new Vector3((float)x0, 0, (float)z0);
-            c.AngleOffset = (float)t0;
+            c.Offset = new Mathc.VectorDouble(x0, 0, z0);
+            c.AngleOffset = t0;
             return c;
         }
-
-        /// <summary>
-        /// Solve the G1 curve by reflecting it across the origin, do this by simply swapping the tangent points and solving the G1 curve again,
-        /// then setting the offset to the final point, and the angle offset to t1 + 180.
-        /// </summary>
-        /// <param name="x0"></param>
-        /// <param name="z0"></param>
-        /// <param name="t0"></param>
-        /// <param name="x1"></param>
-        /// <param name="z1"></param>
-        /// <param name="t1"></param>
-        /// <param name="addOffsets"></param>
-        /// <returns></returns>
-        public static ClothoidCurve G1CurveM(double x0, double z0, double t0, double x1, double z1, double t1)
-        /*{
-            ClothoidCurve c = G1Curve(x0, z0, t1, x1, z1, t0, false);
-            if (addOffsets)
-            {
-                c.Offset = new UnityEngine.Vector3((float)x1, 0, (float)z1);
-                c.AngleOffset = (float)t1 + 180;
-            }
-            return c;
-        }*/
-        {
-            double dx = x1 - x0;
-            double dz = z1 - z0;
-
-            double phi = Math.Atan2(dz, dx);
-            double r = Math.Sqrt((dx * dx) + (dz * dz));
-
-            //NOTE: At the moment I have t1 and t0 swapped to test
-            //solving the root for the curve rotated by 180 deg. 
-            //Then rotating the solution curve by another 180 deg.
-            double phi0 = NormalizeAngle(t1 - phi);
-            double phi1 = NormalizeAngle(t0 - phi);
-
-            double e = 1E-4;
-            if ((Math.Abs(phi0) < e && Math.Abs(phi1) == 0) || (phi0 + Math.PI < e && phi1 - Math.PI < e) || (phi0 - Math.PI < e && phi1 + Math.PI < e))
-            {
-                //UnityEngine.Debug.Log("G1 Curve is a line!");
-                ClothoidCurve cc = new ClothoidCurve().AddLine((float)r);
-                cc.Offset = new Vector3((float)x1, 0, (float)z1);
-                cc.AngleOffset = (float)t0;
-                return cc;
-            }
-
-            double d = phi1 - phi0;
-
-            double g;
-            double dg;
-            List<double[]> IntCS;
-            int u = 0;
-
-            double A = InitialGuessA(phi0, phi1);
-
-            do
-            {
-                IntCS = GeneralizedFresnelCS(3, 2 * A, d - A, phi0);
-                g = IntCS[1][0];
-                dg = IntCS[0][2] - IntCS[0][1];
-                A -= g / dg;//
-                //UnityEngine.Debug.LogWarning($"u: {u} | g: {g} | dg: {dg} | A: {A}");
-            } while (++u < 20 && Math.Abs(g) > ROOT_TOLERANCE);
-
-            if (Math.Abs(g) > ROOT_TOLERANCE)
-            {
-                //UnityEngine.Debug.LogWarning($"No root found! (g, tol, tol2): ({g}, {ROOT_TOLERANCE})");
-                //Assert.IsTrue(Math.Abs(g) <= ROOT_TOLERANCE);
-                //could not find a root
-                return new ClothoidCurve();
-            }
-
-            //UnityEngine.Debug.Log($"Number of attempts: {u}");
-            double[] intCS;
-
-            intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
-            double s = r / intCS[0];
-
-
-            //Assert.IsTrue(s > 0);
-            if (s <= 0)
-            {
-                //UnityEngine.Debug.LogWarning($"ArcLength Negative or Zero! s: {s} | r: {r} | intCS[0]: {intCS[0]} | intCS[1]: {intCS[1]} | phi0: {phi0 * 180 / Math.PI} | phi1: {phi1 * 180 / Math.PI} | A: {A} | d: {d * 180 / Math.PI}");
-
-                //intCS = GeneralizedFresnelCS(2 * -A, d + A, phi0);
-                //s = r / intCS[0];
-
-                //UnityEngine.Debug.LogWarning($"ArcLength Negative or Zero! s: {s} | r: {r} | intCS[0]: {intCS[0]} | intCS[1]: {intCS[1]} | phi0: {phi0 * 180 / Math.PI} | phi1: {phi1 * 180 / Math.PI} | A: {A} | d: {d * 180 / Math.PI}");
-                return new ClothoidCurve();
-            }
-
-            double startCurvature = (d - A) / s;
-            double sharpness = 2 * A / (s * s);
-
-            ClothoidCurve c = ClothoidCurve.FromSegments(new ClothoidSegment((float)startCurvature, (float)sharpness, (float)s));
-            c.Offset = new Vector3((float)x1, 0, (float)z1);
-            c.AngleOffset = (float)t1 + 180;
-            return c;
-        }
-
 
         /// <summary>
         /// Normalize an angle in radians to be between -pi and pi.
@@ -650,12 +521,12 @@ namespace ClothoidX
 
         private static double C0(double t)
         {
-            return Mathc.C((float)t);
+            return Mathc.C(t);
         }
 
         private static double S0(double t)
         {
-            return Mathc.S((float)t);
+            return Mathc.S(t);
         }
 
         private static double C1(double t)

@@ -1,15 +1,16 @@
 using System;
-using System.Numerics;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace ClothoidX
 {
+    //TODO: remove Vector instances and use double[] instead for better precision.
     [Serializable]
     public class ClothoidSegment
     {
-        public static double CURVE_FACTOR = (float)System.Math.Sqrt(System.Math.PI / 2);
+        public static double CURVE_FACTOR = Math.Sqrt(Math.PI / 2);
         //if the curvature is less than this we will approximate it as a line segment.
-        public static double MIN_CURVATURE_DIFF = 0.0015f;
+        public static double MIN_CURVATURE_DIFF = 1E-15;
         /// <summary>
         /// Represents the arc length on the parent ClothoidCurve where this segment starts.
         /// </summary>
@@ -134,7 +135,8 @@ namespace ClothoidX
                     double circumference = 2 * Math.PI * radius;
                     double fullSweepAngle_deg = 360f * TotalArcLength / circumference;
                     double rotationAngle = interp * fullSweepAngle_deg; //same here, value in degrees
-                    Vector3 vector = RotateAboutAxisDeg(new Vector3(0, 0, (float)radius), Vector3.UnitY, rotationAngle);
+                    //Vector3 vector = RotateAboutAxisDeg(new Vector3(0, 0, (float)radius), Vector3.UnitY, rotationAngle);
+                    Vector3 vector = RotateAboutAxisRad(new Vector3(0, 0, (float)radius), Vector3.UnitY, interp * TotalArcLength / radius);
                     v = new Vector3(vector.X, vector.Y, (float)(vector.Z - radius));
                     //return new Vector3(vector.x, vector.y, isMirroredX ? radius - vector.z : vector.z - radius);
                     break;
@@ -146,6 +148,27 @@ namespace ClothoidX
 
             //if (Sharpness == 0) v = new Vector3(v.x, v.y, -v.z);
             return v;
+        }
+
+        public Mathc.VectorDouble SampleSegmentByTotalArcLengthDouble(double arcLength)
+        {
+            if (arcLength > ArcLengthEnd || arcLength < ArcLengthStart) throw new ArgumentOutOfRangeException();
+            double interp = (arcLength - ArcLengthStart) / TotalArcLength;
+            switch (this.LineType)
+            {
+                case LineType.LINE:
+                    return new Mathc.VectorDouble(arcLength - ArcLengthStart, 0, 0);
+                case LineType.CIRCLE:
+                    double radius = -2f / (StartCurvature + EndCurvature); //this might be positive or negative
+                    double circumference = 2 * Math.PI * radius;
+                    //double fullSweepAngle_deg = 360.0 * TotalArcLength / circumference;
+                    //double rotationAngle = interp * fullSweepAngle_deg; //same here, value in radians
+                    double rot = interp * TotalArcLength / radius;
+                    Mathc.VectorDouble vector = Mathc.VectorDouble.RotateAboutAxis(new Mathc.VectorDouble(0, 0, radius), Mathc.VectorDouble.UnitY, rot);
+                    return new Mathc.VectorDouble(vector.X, vector.Y, vector.Z - radius);
+                default:
+                    return SampleClothoidD(interp);
+            }
         }
 
         /// <summary>
@@ -176,7 +199,7 @@ namespace ClothoidX
             List<Vector3> points = new List<Vector3>();
             for (int i = 0; i < numSamples - 1; i++)
             {
-                points.Add(SampleSegmentByRelativeLength((float)i / (numSamples - 1)));
+                points.Add(SampleSegmentByRelativeLength(i / (numSamples - 1)));
             }
             //do the endpoint manually
             points.Add(SampleSegmentByRelativeLength(1));
@@ -356,6 +379,21 @@ namespace ClothoidX
             return point / (float)CURVE_FACTOR;
         }
 
+        public static Mathc.VectorDouble SampleClothoidSegmentD(double t1, double t2, double t)
+        {
+            Mathc.VectorDouble point = new Mathc.VectorDouble(Mathc.C(t), 0, Mathc.S(t)) - new Mathc.VectorDouble(Mathc.C(t1), 0, Mathc.S(t1));
+            if (t2 > t1)
+            {
+                point = Mathc.VectorDouble.RotateAboutAxis(point, Mathc.VectorDouble.UnitY, t1 * t1);
+            }
+            else
+            {
+                point = Mathc.VectorDouble.RotateAboutAxis(point, Mathc.VectorDouble.UnitY, t1 * t1 + Math.PI);
+                point = new Mathc.VectorDouble(point.X, point.Y, -point.Z);
+            }
+            return point / CURVE_FACTOR;
+        }
+
         /// <summary>
         /// Sample the clothoid segment in local space, with an interpolation value between 0 and 1. 
         /// </summary>
@@ -366,11 +404,20 @@ namespace ClothoidX
             double t1 = StartCurvature * B * CURVE_FACTOR;
             double t2 = EndCurvature * B * CURVE_FACTOR;
             double t = t1 + (interpolation * (t2 - t1));
-            Vector3 s = SampleClothoidSegment((float)t1, (float)t2, (float)t);
+            Vector3 s = SampleClothoidSegment(t1, t2, t);
 
             //if (isMirroredX) return B * Mathf.PI * new Vector3(s.x, s.y, -s.z);
             /*else */
             return (float)(B * Math.PI) * s;
+        }
+
+        public Mathc.VectorDouble SampleClothoidD(double interpolation)
+        {
+            double t1 = StartCurvature * B * CURVE_FACTOR;
+            double t2 = EndCurvature * B * CURVE_FACTOR;
+            double t = t1 + (interpolation * (t2 - t1));
+            Mathc.VectorDouble s = SampleClothoidSegmentD(t1, t2, t);
+            return B * Math.PI * s;
         }
 
         /// <summary>

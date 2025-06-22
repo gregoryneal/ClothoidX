@@ -1,18 +1,17 @@
 using System;
-using System.Linq;
-using System.Numerics;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace ClothoidX
 {
     /// <summary>
     /// Solution sets given by D.J. Walton and D.S. Meek
     /// </summary>
-    public static class ClothoidSolutionWaltonMeek3
+    public static class ClothoidSolutionWaltonMeek
     {
         private static readonly int MAXITER = 10;
         private static readonly double TOL = 1E-7;
-        private static void Reverse(ref double phi1, ref double phi2, ref Vector2 P1, ref Vector2 D)
+        private static void Reverse(ref double phi1, ref double phi2, ref Mathc.VectorDouble P1, ref Mathc.VectorDouble D)
         {
             D = -D;
             P1 += D;
@@ -25,16 +24,17 @@ namespace ClothoidX
             phi2 = -phi2;
         }
 
-        private static Vector2 Rotate(Vector2 v, double radians)
+        private static Mathc.VectorDouble Rotate(Mathc.VectorDouble v, double radians)
         {
-            return new Vector2((v.X * (float)Math.Cos(radians)) - (v.Y * (float)Math.Sin(radians)), (v.X * (float)Math.Sin(radians)) + (v.Y * (float)Math.Cos(radians)));
+            //return v.RotateAboutAxis(Mathc.VectorDouble.UnitY, radians);
+            return new Mathc.VectorDouble((v.X * Math.Cos(radians)) - (v.Z * Math.Sin(radians)), 0, (v.X * Math.Sin(radians)) + (v.Z * Math.Cos(radians)));
         }
 
         internal class FinalParameters
         {
-            public Vector2 P0;
-            public Vector2 T0;
-            public Vector2 N0;
+            public Mathc.VectorDouble P0;
+            public Mathc.VectorDouble T0;
+            public Mathc.VectorDouble N0;
             public double a;
             public double t1;
             public double t2;
@@ -67,15 +67,21 @@ namespace ClothoidX
             for (int i = 0; i + 1 < data.Length; i++)
             {
                 c += G1(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
+                //Console.WriteLine($"G1(X0: {data[i].X}, Z0: {data[i].Z}, T0: {data[i].Angle}, X1: {data[i + 1].X}, Z1: {data[i + 1].Z}, T1: {data[i + 1].Angle})");
             }
 
-            c.Offset = data[0].Position;
+            c.Offset = data[0].PositionD;
             c.AngleOffset = data[0].Angle;
 
             return c;
         }
 
         public static ClothoidCurve G1Spline(List<Vector3> inputPolyline)
+        {
+            return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
+        }
+
+        public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> inputPolyline)
         {
             return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
         }
@@ -102,14 +108,16 @@ namespace ClothoidX
         /// <returns></returns>
         public static ClothoidCurve G1(double x0, double z0, double t0, double x1, double z1, double t1)
         {
-            Vector2 P1 = new Vector2((float)x0, (float)z0);
-            Vector3 T = ClothoidSegment.RotateAboutAxisRad(Vector3.UnitX, Vector3.UnitY, -t0);
-            Vector2 T1 = new Vector2(T.X, T.Z);
-            Vector2 P2 = new Vector2((float)x1, (float)z1);
-            T = ClothoidSegment.RotateAboutAxisRad(Vector3.UnitX, Vector3.UnitY, -t1);
-            Vector2 T2 = new Vector2(T.X, T.Z);
+            Mathc.VectorDouble P1 = new Mathc.VectorDouble(x0, 0, z0);
+            Mathc.VectorDouble T = Mathc.VectorDouble.RotateAboutAxis(Mathc.VectorDouble.UnitX, Mathc.VectorDouble.UnitY, -t0);
+            Mathc.VectorDouble T1 = new Mathc.VectorDouble(T.X, 0, T.Z);
+            Mathc.VectorDouble P2 = new Mathc.VectorDouble(x1, 0, z1);
+            T = Mathc.VectorDouble.RotateAboutAxis(Mathc.VectorDouble.UnitX, Mathc.VectorDouble.UnitY, -t1);
+            Mathc.VectorDouble T2 = new Mathc.VectorDouble(T.X, 0, T.Z);
 
-            return G1(P1, T1, P2, T2, .01, 20);
+            //Console.WriteLine($"G1(X0: {P1.X}, Z0: {P1.Z}, T0: {T1}, X1: {P2.X}, Z1: {P2.Z}, T1: {T2})");
+
+            return G1(P1, T1, P2, T2, TOL, MAXITER);
         }
 
         /// <summary>
@@ -132,12 +140,12 @@ namespace ClothoidX
         /// <param name="tol">solution tolerance</param>
         /// <param name="iterLim">maximum newton iterations</param>
         /// <returns></returns>
-        public static ClothoidCurve G1(Vector2 P1, Vector2 T1, Vector2 P2, Vector2 T2, double tol, double iterLim)
+        public static ClothoidCurve G1(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol, double iterLim)
         {
-            Vector3 cacheP1 = new Vector3(P1.X, 0, P1.Y);
+            Mathc.VectorDouble cacheP1 = new Mathc.VectorDouble(P1.X, 0, P1.Z);
             bool reverseFlag = false;
-            Vector2 D = P2 - P1;
-            float d = D.Length();
+            Mathc.VectorDouble D = P2 - P1;
+            double d = D.Length;
 
             if (d <= tol)
             {
@@ -146,8 +154,10 @@ namespace ClothoidX
             }
             else
             {
-                double phi1 = Math.Atan2(Mathc.Cross(T1, D), Vector2.Dot(T1, D));
-                double phi2 = Math.Atan2(Mathc.Cross(D, T2), Vector2.Dot(D, T2));
+                double phi1 = Math.Atan2(Mathc.Cross2(T1, D), Mathc.VectorDouble.Dot(T1, D));
+                double phi2 = Math.Atan2(Mathc.Cross2(D, T2), Mathc.VectorDouble.Dot(D, T2));
+                //Console.WriteLine($"Phi1: {phi1}, Phi2: {phi2}, D: {D.Length}");
+
                 if (Math.Abs(phi1) > Math.Abs(phi2))
                 {
                     reverseFlag = true;
@@ -175,27 +185,28 @@ namespace ClothoidX
                     Vector3 v;
                     if (p.NextDouble() > .5)
                     {
-                        v = ClothoidSegment.RotateAboutAxisRad(new Vector3(T1.X, 0, T1.Y), Vector3.UnitY, amt);
-                        T1 = new Vector2(v.X, v.Z);
+                        v = Mathc.VectorDouble.RotateAboutAxis(T1, Mathc.VectorDouble.UnitY, amt);
+                        T1 = new Mathc.VectorDouble(v.X, 0, v.Z);
                     }
                     else
                     {
-                        v = ClothoidSegment.RotateAboutAxisRad(new Vector3(T2.X, 0, T2.Y), Vector3.UnitY, amt);
-                        T2 = new Vector2(v.X, v.Z);
+                        v = Mathc.VectorDouble.RotateAboutAxis(T2, Mathc.VectorDouble.UnitY, amt);
+                        T2 = new Mathc.VectorDouble(v.X, 0, v.Z);
                     }
                     return G1(P1, T1, P2, T2, tol, iterLim);
                 }
                 else if (Math.Abs(phi1) <= tol && Math.Abs(phi2) <= tol)
                 {
                     //straight line segment
-                    ClothoidCurve c = new ClothoidCurve().AddLine(D.Length());
+                    //TODO: Rotate the line segment to actually interpolate the points between p1 and p2
+                    ClothoidCurve c = new ClothoidCurve().AddLine(D.Length);
                     c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Y, T1.X);
+                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
                 else if (Math.Abs(phi2 - phi1) <= tol)
                 {
-                    d = D.Length();
+                    d = D.Length;
                     //circular segment
                     k = 2 * Math.Sin(phi1) / d;
                     dk = 0;
@@ -206,12 +217,12 @@ namespace ClothoidX
 
                     ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
                     c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Y, T1.X);
+                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
                 else
                 {
-                    FinalParameters f = FitEuler(P1, Vector2.Normalize(D), d, phi1, phi2, reflectFlag);
+                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag);
                     L = f.a * Math.Abs(f.t2 - f.t1);
                     dk = Math.PI / (f.a * f.a);
                     if (reverseFlag)
@@ -230,14 +241,14 @@ namespace ClothoidX
 
                     ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
                     c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Y, T1.X);
+                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
 
             }
         }
 
-        private static FinalParameters FitEuler(Vector2 P1, Vector2 T, double d, double phi1, double phi2, bool reflect)
+        private static FinalParameters FitEuler(Mathc.VectorDouble P1, Mathc.VectorDouble T, double d, double phi1, double phi2, bool reflect)
         {
             bool failed = true;
             double theta = 0;
@@ -279,9 +290,9 @@ namespace ClothoidX
             double phi = phi1 + theta;
             double a = d / (((S2 - S1) * Math.Sin(phi)) + ((C2 - C1) * Math.Cos(phi)));
 
-            Vector2 T0;
-            Vector2 N0;
-            Vector2 P0;
+            Mathc.VectorDouble T0;
+            Mathc.VectorDouble N0;
+            Mathc.VectorDouble P0;
             if (reflect)
             {
                 T0 = Rotate(T, phi);
@@ -293,7 +304,7 @@ namespace ClothoidX
                 N0 = Rotate(T0, Math.PI / 2);
             }
 
-            P0 = P1 - ((float)a * ((float)C1 * T0) + ((float)S1 * N0));
+            P0 = P1 - (a * (C1 * T0) + (S1 * N0));
 
             return new FinalParameters()
             {
@@ -374,498 +385,4 @@ namespace ClothoidX
             S *= Math.Sign(t);
         }
     }
-    public static class ClothoidSolutionWaltonMeek
-    {
-        public static ClothoidCurve G1Spline(List<Vector3> inputPolyline)
-        {
-            ClothoidCurve c = new ClothoidCurve();
-            AsymmetricParameters p;
-            Vector2 p1;
-            Vector2 p2;
-            Vector2 p3;
-            for (int i = 0; i + 2 < inputPolyline.Count; i++)
-            {
-                p1 = new Vector2(inputPolyline[i].X, inputPolyline[i].Z);
-                p2 = new Vector2(inputPolyline[i + 1].X, inputPolyline[i + 1].Z);
-                p3 = new Vector2(inputPolyline[i + 2].X, inputPolyline[i + 2].Z);
-                p = AsymmetricClothoid(new Vector2[3] { p1, p2, p3 }, 0.5f);
-                //TODO: add t1 and t2 parameters to AsymmetricParameters so we can 
-                //calculate L, k and dk to add segments the normal way.
-
-                //c += new ClothoidSegment()
-            }
-
-            c.Offset = inputPolyline[0];
-            return c;
-        }
-
-        private static double Angle(Vector2 v1, Vector2 v2)
-        {
-            return Math.Acos(Vector2.Dot(v1, v2)) / (v1.Length() * v2.Length());
-        }
-
-        public static double ThetaToT(double theta) => Math.Sqrt(2 * theta / Math.PI);
-        public static double TToTheta(double t) => t * t * Math.PI / 2;
-
-        public static Vector2[] MakePointsFeasible(Vector2[] points, double tau)
-        {
-            double alpha = Angle(points[1] - points[0], points[2] - points[1]);
-            double t = ThetaToT(alpha);
-            double limit = Mathc.C((float)t) / Mathc.S((float)t);
-            double a = (points[1] - points[0]).Length();
-            double b = (points[2] - points[1]).Length();
-            double g;
-            double h;
-
-            if (a > b)
-            {
-                g = a;
-                h = b;
-            }
-            else
-            {
-                (points[0], points[2]) = (points[2], points[0]);
-                g = b;
-                h = a;
-            }
-
-            Vector2 T0 = (points[1] - points[0]) / (float)g;
-            Vector2 newPoint = points[0];
-
-            if (((g / h) + Math.Cos(alpha)) / Math.Sin(alpha) > limit)
-            {
-                double gLim = h * ((limit * Math.Sin(alpha)) - Math.Cos(alpha));
-                double tLerp = ((1 - tau) * h) + (tau * gLim);
-                newPoint = points[1] - ((float)tLerp * T0);
-            }
-            List<Vector2> ps = points.ToList();
-            ps.Insert(1, newPoint);
-            return ps.ToArray();
-        }
-
-        private static double F(double theta, double alpha, double k)
-        {
-            double t0 = ThetaToT(theta);
-            double t1 = ThetaToT(alpha - theta);
-            return (Math.Sqrt(theta) * ((Mathc.C(t0) * Math.Sin(alpha)) - (Mathc.S(t0) * (k + Math.Cos(alpha))))) + (Math.Sqrt(alpha - theta) * ((Mathc.S(t1) * (1 + (k * Math.Cos(alpha)))) - (k * Mathc.C(t1) * Math.Sin(alpha))));
-        }
-
-        private static double FP(double theta, double alpha, double k)
-        {
-            double t0 = ThetaToT(theta);
-            double t1 = ThetaToT(alpha - theta);
-            double st0 = Mathc.S(t0);
-            double st1 = Mathc.S(t1);
-            double sa = Math.Sin(alpha);
-            double ca = Math.Cos(alpha);
-
-            return (st0 * sa / (2 * Math.Sqrt(theta))) *
-            ((Mathc.C(t0) / st0) - ((k + ca) / sa)) +
-            (k * st1 * sa / (2 * Math.Sqrt(alpha - theta))) *
-            ((Mathc.C(t1) / st1) - ((1 + (k * ca)) / (k * sa)));
-        }
-
-        private static AsymmetricParameters AsymmetricClothoid(Vector2[] points, double tau)
-        {
-            double omega = Angle(points[1] - points[0], points[1] - points[2]);
-            if (Math.Abs(omega - Math.PI) < 1E-6) throw new InvalidClothoidSegmentException("angle too small");
-
-            Vector2[] p = MakePointsFeasible(points, tau);
-            double alpha = Angle(p[2] - p[1], p[3] - p[2]);
-            double a = (p[2] - p[1]).Length();
-            double b = (p[3] - p[2]).Length();
-            double g = Math.Max(a, b);
-            double h = Math.Min(a, b);
-            double theta0 = alpha / 2;
-            double f;
-            int u = 0;
-            do
-            {
-                f = F(theta0, alpha, g / h);
-                theta0 -= f / FP(theta0, alpha, g / h);
-            } while (Math.Abs(f) > 1E-3 && ++u <= 20);
-
-            double theta1 = alpha - theta0;
-            double t0 = ThetaToT(theta0);
-            double t1 = ThetaToT(theta1);
-
-            double num = g + (h * Math.Cos(alpha));
-            double scale = Math.Sqrt(theta1 / theta0);
-            double denom = Mathc.C(t0) + (scale * Mathc.C(t1) * Math.Cos(alpha)) + (scale * Mathc.S(t1) * Math.Sin(alpha));
-            double a0 = num / denom;
-            double a1 = a0 * scale;
-
-            Vector2 P0 = p[1];
-            Vector2 T0 = (p[2] - p[1]) / (float)g;
-            Vector2 P1 = p[3];
-            Vector2 T1 = (p[2] - p[3]) / (float)h;
-
-            Vector2 N0 = new Vector2(-T0.Y, T0.X);
-            Vector2 N1 = new Vector2(-T1.Y, T1.X);
-
-            Func<Vector2, Vector2, double> cross = (Vector2 v1, Vector2 v2) => (v1.X * v2.Y) - (v1.Y * v2.X);
-            double crossT1T0 = cross(T1, T0);
-            if (Math.Sign(cross(T0, N0)) != Math.Sign(crossT1T0)) N0 *= -1;
-            if (Math.Sign(cross(N1, T1)) != Math.Sign(crossT1T0)) N1 *= -1;
-
-            return new AsymmetricParameters()
-            {
-                point0 = points[0],
-                point1 = points[1],
-                P0 = P0,
-                T0 = T0,
-                N0 = N0,
-                P1 = P1,
-                T1 = T1,
-                N1 = N1,
-                a0 = a0,
-                t0 = t0,
-                a1 = a1,
-                t1 = t1
-            };
-        }
-
-        internal struct AsymmetricParameters
-        {
-            public Vector2 point0, point1;
-            public Vector2 P0, T0, N0, P1, T1, N1;
-            public double a0, t0, a1, t1;
-        }
-
-        private static double GetCurvature(double t, double a)
-        {
-            return Math.Sqrt(2 * Math.PI * t) / a;
-        }
-    }
-    /*
-    public class ClothoidSolutionWaltonMeek2 : ClothoidSolution
-    {
-        private float W { get; set; }
-
-        private List<Posture> postures;
-
-        public override ClothoidCurve CalculateClothoidCurve(List<Vector3> inputPolyline, float allowableError = 0.1f, float endpointWeight = 1)
-        {
-            this.postures = Posture.CalculatePostures(inputPolyline);
-            Vector3 R;
-            Vector3 startPosition;
-            Vector3 endPosition;
-            Vector3 endTangent;
-            Posture sp;
-            Posture ep;
-            for (int i = 0; i + 1 < postures.Count; i++)
-            {
-                //postures only record the total offsets, we need each pair to be shifted to where the position of the first one is at the origin,
-                //and then we need to rotate it so that the initial tangent is aligned with the positive x axis.
-                //this solution is only valid when the final tangent angle is less than 180 degrees. Therefore we also need to possibly mirror the
-                //solution along the x axis if after shifting and rotating the final point has a negative z value. Once the calculation is finished
-                //we can mirror -> rotate -> translate to realign it with the rest of the curve. But the clothoid segment object handles that for us, 
-                //so we just need to add clothoid segments in standard position.
-                sp = postures[i];
-                ep = postures[i + 1];
-                //shift the end position by start position
-                startPosition = sp.Position - sp.Position;
-                endPosition = ep.Position - sp.Position;
-                //rotate the end tangent by the start tangent angle
-                endTangent = ClothoidSegment.RotateAboutAxisRad(ep.Tangent, Vector3.up, -sp.Angle);
-                float endAngle;
-
-                //check if the points can be defined with circular segments or line segments. The clothoid segment object can handle these
-                //with just the start and end curvature values so we just check here.
-                switch (ClothoidSegment.GetLineTypeFromCurvatureDiff(sp.Curvature, ep.Curvature))
-                {
-                    case LineType.LINE:
-                        break;
-                    case LineType.CIRCLE:
-                        break;
-                    case LineType.CLOTHOID:
-                        //check if the postures in standard form are going into the the negative z subplane. if so flag it and mirror them.
-                        if (startPosition.z > endPosition.z)
-                        {
-                            endPosition = new Vector3(endPosition.x, endPosition.y, -endPosition.z);
-                            endTangent = new Vector3(endTangent.x, endTangent.y, -endTangent.z);
-                        }
-                        else
-                        {
-                        }
-
-                        endAngle = Mathf.Atan2(endTangent.z, endTangent.x);
-                        R = CalculateR(endAngle, ep.Curvature);
-
-                        if (IsInGamma(endPosition, R, sp.Curvature, ep.Curvature))
-                        {
-
-                        }
-                        break;
-                }
-            }
-            throw new NotImplementedException();
-        }
-
-        public override List<Vector3> GetFitSamples(int numSaples)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// This returns parameters for the gamma region. 
-        /// If startCurvature = 0: 
-        /// Item1: slope from origin to point R
-        /// Item2: y value of point R
-        /// Item3: Vector3.zero
-        /// 
-        /// If startCurvature > 0:
-        /// Item1: slope from origin to point R
-        /// Item2: radius of bounding circle
-        /// Item3: center of bounding circle
-        /// </summary>
-        /// <param name="startCurvature"></param>
-        /// <param name="endCurvature"></param>
-        /// <param name="endTangent">the tangent in radians</param>
-        /// <returns></returns>
-        public static (float, float, Vector3) GetGammaRegionParameters(float startCurvature, float endCurvature, float endTangent)
-        {
-            Vector3 R = CalculateR(endTangent, endCurvature);
-            float slope = R.z / R.x;
-            float radius;
-            Vector3 center;
-            if (startCurvature > 0)
-            {
-                radius = (1 / startCurvature) - (1 / endCurvature);
-                center = new Vector3(R.x, 0, R.z + (1 / startCurvature) - (1 / endCurvature));
-            }
-            else
-            {
-                radius = R.z;
-                center = Vector3.zero;
-            }
-
-            return (slope, radius, center);
-        }
-
-        public static float CalculateW(float endTangent)
-        {
-            return endTangent * 2 / Mathf.PI;
-        }
-
-        public static Vector3 CalculateR(float endTangent, float endCurvature)
-        {
-            float x = (float)Math.Sin(endTangent);
-            float z = 1 - (float)Math.Cos(endTangent);
-            //Debug.Log($"X: {x} | Z: {z}");
-            return new Vector3(x, 0, z) / endCurvature;
-        }
-
-
-        /// <summary>
-        /// Given A and C on a monotonically increasing curve, calculate which side of the curve Q is on.
-        /// </summary>
-        /// <param name="A">arc length at point A</param>
-        /// <param name="C">arc length at point C</param>
-        /// <param name="Q">the point we are testing</param>
-        /// <returns>0: Q is on the convex side of the curve. 1: Q is on the concave side of the curve. 2: Q is on the curve itself.</returns>
-        private int WhichSideD(double A, double C, Vector3 Q)
-        {
-            //Calculate B
-            double B = (A + C) / 2;
-            return 0;
-        }
-
-        public static bool IsInGamma(Vector3 point, float startCurvature, float endCurvature, float endTangent)
-        {
-            Vector3 R = CalculateR(endTangent, endCurvature);
-            return IsInGamma(point, R, startCurvature, endCurvature);
-        }
-
-        /// <summary>
-        /// Checks if the point is in an acceptable region where we can find a solution.
-        /// </summary>
-        /// <param name="point"></param>
-        /// <returns></returns>
-        public static bool IsInGamma(Vector3 point, Vector3 R, float startCurvature, float endCurvature)
-        {
-            // check if point.z > R.z, the x value is a bit more complicated.
-            // Draw a ray from the origin that passes through R (R is in quadrant 1)
-            // if our point.x > ray.x at point.z then we are in bounds.
-            if (point.z < R.z)
-            {
-                return false;
-            }
-            // y = mx + b where b = 0, m = R.y/R.x => x = y / m
-            //check if slope of Q is greater than slope of R
-            if (point.z / point.x >= R.z / R.x)
-            {
-                return false;
-            }
-
-            if (startCurvature > 0)
-            {
-                // Additionally check if we are in the defined circle
-                float radius = (1 / startCurvature) - (1 / endCurvature);
-                Vector3 center = new Vector3(R.x, 0, (1 / startCurvature) - R.z);
-                float a = point.x - center.x;
-                float b = point.z - center.z;
-                if ((a * a) + (b * b) >= radius * radius)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        public static List<Vector3> CalculateDCurve(float W, float Kp, float Kq)
-        {
-
-            List<Vector3> points = new List<Vector3>();
-            int numSamples = 250;
-            float Kq2 = Kq * Kq;
-            float Kp2 = Kp * Kp;
-            float B;
-            float KqB;
-            float KpB;
-            float omega;
-            if (Kp > 0)
-            {
-                for (float t = 0; t < W; t += W / numSamples)
-                {
-                    B = CalculateB(W, t, Kq2, Kp2);
-                    KqB = Kq * B;
-                    KpB = Kp * B;
-                    omega = -(Kp * Kp * B * B);
-                    points.Add(SampleD(t, B, W, omega, Kq, KqB, KpB));
-                }
-                //add last point manually
-                B = CalculateB(W, W, Kq2, Kp2);
-                KqB = Kq * B;
-                KpB = Kp * B;
-                omega = -(KpB * KpB);
-                points.Add(SampleD(W, B, W, omega, Kq, KqB, KpB));
-            }
-            else
-            {
-                Vector3 R = CalculateR(W * Mathf.PI / 2, Kq);
-                for (float t = 0; t < W; t += W / numSamples)
-                {
-                    points.Add(SampleD2(t, W, Kq, R));
-                }
-                //add last point manually
-                points.Add(SampleD2(W, W, Kq, R));
-            }
-
-            return points;
-        }
-
-        public static List<Vector3> CalculateECurve(float W, float Kp, float Kq)
-        {
-            float omega;
-            int numPoints = 250;
-            List<Vector3> points = new List<Vector3>();
-            float B;
-            Vector3 a;
-            Vector3 b;
-            Vector3 S;
-            if (Kp > 0)
-            {
-                for (float t = 0; t < W; t += W / numPoints)
-                {
-                    B = CalculateB(W, t, Kq * Kq, Kp * Kp);
-                    omega = t - (Kp * B * Kp * B);
-                    a = GammaProduct(omega, Kp * B, Kq * B, B);
-                    b = new Vector3(Mathf.Sin(Mathf.PI * t / 2), 0, 1 - Mathf.Cos(Mathf.PI * t / 2)) / Kp;
-                    points.Add(a + b);
-                }
-                B = CalculateB(W, W, Kq * Kq, Kp * Kp);
-                omega = W - (Kp * B * Kp * B);
-                a = GammaProduct(omega, Kp * B, Kq * B, B);
-                b = new Vector3(Mathf.Sin(Mathf.PI * W / 2), 0, 1 - Mathf.Cos(Mathf.PI * W / 2)) / Kp;
-                points.Add(a + b);
-
-            }
-            else
-            {
-                S = SampleD2(0, W, Kq, CalculateR(W * Mathf.PI / 2, Kq));
-                points.Add(S);
-                points.Add(S + (Vector3.right * 100));
-            }
-            return points;
-        }
-
-        //TODO: Return D(t) for Kp > 0
-        /// <summary>
-        /// Sample D(t) when Kp > 0
-        /// </summary>
-        /// <param name="t"></param>
-        /// <param name="B"></param>
-        /// <param name="W"></param>
-        /// <param name="omega"></param>
-        /// <param name="Kq"></param>
-        /// <param name="KqB"></param>
-        /// <param name="KpB"></param>
-        /// <returns></returns>
-        private static Vector3 SampleD(float t, float B, float W, float omega, float Kq, float KqB, float KpB)
-        {
-            float x = Mathf.PI * W / 2;
-            float y = Mathf.PI * (W - t) / 2;
-            float vx = -Mathf.Sin(x) + Mathf.Sin(y);
-            float vz = Mathf.Cos(x) - Mathf.Cos(y);
-            Vector3 a = GammaProduct(omega, KpB, KqB, B);
-            return a - (new Vector3(vx, 0, vz) / Kq);
-        }
-
-        /// <summary>
-        /// Sample D when Kp = 0
-        /// </summary>
-        /// <param name="t"></param>
-        /// <param name="W"></param>
-        /// <param name="Kq"></param>
-        /// <returns></returns>
-        private static Vector3 SampleD2(float t, float W, float Kq, Vector3 R)
-        {
-            return R + new Vector3((float)Mathc.C(Mathf.Sqrt(W - t)), 0, (float)Mathc.S(Mathf.Sqrt(W - t))) * Mathf.PI / Kq;
-        }
-
-        private bool IsInGammaA(Vector3 point, Vector3 R, float W, float startCurvature, float endCurvature)
-        {
-            return false;
-        }
-
-        private bool IsInGammaB(Vector3 point, Vector3 R, float W, float startCurvature, float endCurvature)
-        {
-            return false;
-        }
-
-        private static double[][] RotationMatrix(float omega)
-        {
-            float w = Mathf.PI * omega / 2;
-            return new double[2][] {
-                new double[] {Mathf.Cos(w), -Mathf.Sin(w)},
-                new double[] {Mathf.Sin(w), Mathf.Cos(w)}
-            };
-        }
-
-        private static double[] RotationMatrix(double omega, double x, double y)
-        {
-            double w = System.Math.PI * omega / 2;
-            return new double[2] { (x * Math.Cos(w)) - (y * Math.Sin(w)), (x * Math.Sin(w)) + (y * Math.Cos(w)) };
-        }
-
-        private static double[] Vector(float KpB, float KqB)
-        {
-            return new double[2] { Mathc.C(KqB) - Mathc.C(KpB), Mathc.S(KqB) - Mathc.S(KpB) };
-        }
-
-        public static Vector3 GammaProduct(float omega, float KpB, float KqB, float B)
-        {
-            //double[][] a = Clothoid.Mathc.SVDJacobiProgram.MatProduct(RotationMatrix(omega), Vector(KpB, KqB));
-            double[] v = Vector(KpB, KqB);
-            double[] r = RotationMatrix(omega, v[0], v[1]);
-            return B * Mathf.PI * new Vector3((float)r[0], 0, (float)r[1]);
-        }
-
-        private static float CalculateB(float W, float t, float Kq2, float Kp2)
-        {
-            return Mathf.Sqrt((W - t) / (Kq2 - Kp2));
-        }
-    }*/
 }

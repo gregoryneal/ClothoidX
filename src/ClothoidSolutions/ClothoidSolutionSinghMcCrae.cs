@@ -1,6 +1,6 @@
 using System;
-using System.Numerics;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace ClothoidX
 {
@@ -29,6 +29,8 @@ namespace ClothoidX
         /// Some problems that need addressed: 
         /// - Some curves generate anomalous curvature values, this is visible when viewing LK node graph and its segmented counterpart. No work has been
         ///   done to address this yet.
+        /// - This method might be better suited for batching the spline generation. With a large number of nodes, the method becomes unstable.
+        ///   For instance, split the polyline into segments with some maximum arc length, and join all of those curves together.
         /// </summary>
         public static ClothoidCurve G2Spline(List<Vector3> polyline)
         {
@@ -55,7 +57,7 @@ namespace ClothoidX
             List<Vector3> centerOfMass = GetCenterOfMass(polyline, curveSamples, 1);
             //get the rotation matrix required to align the two curves
             double[][] rotationMatrix = GetRotationMatrix(polyline, curveSamples, centerOfMass[0], centerOfMass[1]);
-            c.AddBestFitTranslationRotation(centerOfMass[0], centerOfMass[1], rotationMatrix);
+            c.AddBestFitTranslationRotation(centerOfMass[0].ToVD(), centerOfMass[1].ToVD(), rotationMatrix);
             return c;
         }
 

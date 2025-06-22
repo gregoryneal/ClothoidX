@@ -1,8 +1,9 @@
 using System;
-using System.Numerics;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
+//TODO: Remove all Vector instances and replace with double[] arrays, or use a custom Vector3 class that is more performant.
 namespace ClothoidX
 {
 
@@ -15,7 +16,7 @@ namespace ClothoidX
         /// <summary>
         /// Overall Offset vector for the curve. If the curve passes through all the polyline nodes, this should be the position of the first node.
         /// </summary>
-        public Vector3 Offset = Vector3.Zero;
+        public Mathc.VectorDouble Offset = Mathc.VectorDouble.Zero;
         /// <summary>
         /// Overall angle offset of the curve in radians. This should be close to if not equal to the first Posture's tangent angle. 
         /// </summary>
@@ -31,7 +32,7 @@ namespace ClothoidX
             get => this.segments[index];
         }
 
-        public Vector3 Endpoint => SampleCurveFromArcLength(TotalArcLength);
+        public Mathc.VectorDouble Endpoint => SampleCurveFromArcLengthD(TotalArcLength);
 
         public int PolylineCount { get { return this.inputPolyline.Count; } }
 
@@ -67,12 +68,12 @@ namespace ClothoidX
         /// <summary>
         /// If the curve position and rotation are approximated, this will be the center of mass of the generated curve in local space.
         /// </summary>
-        protected Vector3 curveCM = Vector3.Zero;
+        protected Mathc.VectorDouble curveCM = Mathc.VectorDouble.Zero;
 
         /// <summary>
         /// If the curve position and rotation are approximated, this will be the center of mass of the input polyline nodes.
         /// </summary>
-        protected Vector3 polylineCM = Vector3.Zero;
+        protected Mathc.VectorDouble polylineCM = Mathc.VectorDouble.Zero;
 
         /// <summary>
         /// If the curve position and rotation are approximated, this will be a 3 column row vector that the curve sample point (3 row column vector)
@@ -153,7 +154,7 @@ namespace ClothoidX
         /// <param name="curveCM"></param>
         /// <param name="polylineCM"></param>
         /// <param name="bestRotate"></param>
-        public void AddBestFitTranslationRotation(Vector3 curveCM, Vector3 polylineCM, double[][] bestRotate)
+        public void AddBestFitTranslationRotation(Mathc.VectorDouble curveCM, Mathc.VectorDouble polylineCM, double[][] bestRotate)
         {
             this.curveCM = curveCM;
             this.polylineCM = polylineCM;
@@ -196,6 +197,34 @@ namespace ClothoidX
             }
 
             AngleOffset *= -1;
+        }
+
+        public Mathc.VectorDouble SampleCurveFromArcLengthD(double arcLength)
+        {
+            Mathc.VectorDouble value = Mathc.VectorDouble.Zero;
+            Mathc.VectorDouble offset = Mathc.VectorDouble.Zero;
+            double rotation = 0; //radians
+            for (int i = 0; i < segments.Count; i++)
+            {
+                ClothoidSegment segment = segments[i];
+                if (arcLength >= segment.ArcLengthStart && arcLength <= segment.ArcLengthEnd)
+                {
+                    //Debug.Log($"Now sampling curve type: {segment.LineType}");
+                    value = segment.SampleSegmentByTotalArcLengthDouble(arcLength);
+                    //Console.WriteLine($"Sampled segment: {value}");
+                    value = Mathc.VectorDouble.RotateAboutAxis(value, Mathc.VectorDouble.UnitY, rotation);
+                    //Console.WriteLine($"Rotate sampled segment by {rotation} | {value}");
+                    value += offset;
+                    //Console.WriteLine($"After translation by {offset}: {value}");
+                    break;
+                }
+                offset += Mathc.VectorDouble.RotateAboutAxis(segment.Offset.ToVD(), Mathc.VectorDouble.UnitY, rotation);
+                rotation -= segment.Rotation; //apply rotation last since rotation is applied around the origin
+                //Debug.Log($"New offset and rotation along curve: {offset}, {rotation}");
+            }
+            value = Mathc.VectorDouble.RotateAboutAxis(value, Mathc.VectorDouble.UnitY, -AngleOffset);
+            value += Offset;
+            return value;
         }
 
         /// <summary>
@@ -241,7 +270,7 @@ namespace ClothoidX
         {
             List<Vector3> points = new List<Vector3>();
             Vector3 point;
-            double increment = TotalArcLength / numSamples;
+            double increment = TotalArcLength / (numSamples - 1);
             //Debug.Log($"Increment size: {increment}, totalArcLength: {TotalArcLength}, numSamples: {numSamples}");
             for (double arcLength = 0; arcLength < TotalArcLength; arcLength += increment)
             {
@@ -259,6 +288,40 @@ namespace ClothoidX
             point += polylineCM;
             points.Add(point);
 
+            return points;
+        }
+
+        /// <summary>
+        /// Utilizes double precision to sample the curve. This is not nearly as fast as the regular sampling method, and the precision is not much better.
+        /// I'm only leaving this here for now.
+        /// </summary>
+        /// <param name="numSamples"></param>
+        /// <returns></returns>
+        public List<Mathc.VectorDouble> GetSamplesD(int numSamples)
+        {
+            List<Mathc.VectorDouble> points = new List<Mathc.VectorDouble>();
+            Mathc.VectorDouble point;
+            double increment = TotalArcLength / (numSamples - 1);
+            //Debug.Log($"Increment size: {increment}, totalArcLength: {TotalArcLength}, numSamples: {numSamples}");
+            for (double arcLength = 0; arcLength < TotalArcLength; arcLength += increment)
+            {
+                point = SampleCurveFromArcLengthD(arcLength); //untranslated, unrotated
+                if (point == Mathc.VectorDouble.Zero && arcLength != 0) continue;
+                //UnityEngine.Debug.Log($"Curve CM before applying: {curveCM.X}, {curveCM.Y}, {curveCM.Z}");
+                //Console.WriteLine($"Point before translation: {point}");
+                point -= curveCM;
+                //Console.WriteLine($"Point after translation and before rotation: {point}");
+                point = GetRotatedPoint(point);
+                //Console.WriteLine($"Point after rotation and before final translation: {point}");
+                point += polylineCM;
+                //Console.WriteLine($"Point after final translation: {point}");
+                points.Add(point);
+            }
+            point = SampleCurveFromArcLengthD(TotalArcLength);
+            point -= curveCM;
+            point = GetRotatedPoint(point);
+            point += polylineCM;
+            points.Add(point);
             return points;
         }
 
@@ -290,6 +353,30 @@ namespace ClothoidX
             point[2][0] = unrotatedPoint.Z;
             double[][] rotatedPoint = Mathc.SVDJacobiProgram.MatProduct(rotationMatrix, point);
             return new Vector3((float)rotatedPoint[0][0], (float)rotatedPoint[1][0], (float)rotatedPoint[2][0]);
+        }
+
+        public Mathc.VectorDouble GetRotatedPoint(Mathc.VectorDouble unrotatedPoint)
+        {
+            if (rotationMatrix == null) return unrotatedPoint;
+            bool isZero = true;
+            for (int i = 0; i < rotationMatrix.Length; i++)
+            {
+                if (!rotationMatrix[i].All(x => x == 0))
+                {
+                    isZero = false;
+                    break;
+                }
+            }
+            if (isZero)
+            {
+                return unrotatedPoint;
+            }
+            double[][] point = Mathc.SVDJacobiProgram.MatMake(3, 1);
+            point[0][0] = unrotatedPoint.X;
+            point[1][0] = unrotatedPoint.Y;
+            point[2][0] = unrotatedPoint.Z;
+            double[][] rotatedPoint = Mathc.SVDJacobiProgram.MatProduct(rotationMatrix, point);
+            return new Mathc.VectorDouble(rotatedPoint[0][0], rotatedPoint[1][0], rotatedPoint[2][0]);
         }
 
         /// <summary>
@@ -422,7 +509,7 @@ namespace ClothoidX
             return AddSegments(circularSegment);
         }
 
-        public ClothoidCurve AddLine(float length)
+        public ClothoidCurve AddLine(double length)
         {
             return AddSegment(new ClothoidSegment(0, 0, length));
         }
