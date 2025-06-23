@@ -13,13 +13,16 @@ https://github.com/user-attachments/assets/9cd0df39-32da-4ccb-aa55-787b6c9f2c3a
 
 https://github.com/user-attachments/assets/f9f66b3a-a745-474b-ba9d-5b8d3df06682
 
+### G1 fitting via Bertolazzi & Frego (as well as Walton & Meek):
+![race track comparison with ClothoidCurve2](https://github.com/user-attachments/assets/949b578d-b94c-4ee9-b92b-ec3e97f4b30d)
+
+![race track comparison 2](https://github.com/user-attachments/assets/8604af27-4fdd-4a6f-8912-dde01446fbd2)
+
+https://github.com/user-attachments/assets/67e96504-51fe-4144-a0d7-c478f19c5ba5
+
 ### G2 Approximation via Singh & McCrae:
 
 https://github.com/user-attachments/assets/e88b24a1-f352-46de-a81d-6636e61771f3
-
-### G1 fitting via Bertolazzi & Frego (as well as Walton & Meek):
-
-https://github.com/user-attachments/assets/67e96504-51fe-4144-a0d7-c478f19c5ba5
 
 
 
