@@ -7,9 +7,10 @@ namespace ClothoidX
 {
 
     /// <summary>
-    /// A class that holds a sequence of ClothoidSegments and can calculate any position given an arc length (optionally parameterized to the range [0f,1f])
+    /// A clothoid curve that uses the ClothoidSegment22 class, and generates the curve using the ClothoidSegment22.Position property, to attempt to guarantee G0 continuity.
+    /// This is different from ClothoidCurve, which doesn't can only have a single offset, the rest of the curve is solely determined by the segment properties such as curvature, sharpness and arc length.
     /// </summary>
-    public class ClothoidCurve
+    public class ClothoidCurve2
     {
 
         /// <summary>
@@ -26,12 +27,12 @@ namespace ClothoidX
         /// </summary>
         public int Count { get { return segments.Count; } }
 
-        public ClothoidSegment this[int index]
+        public ClothoidSegment2 this[int index]
         {
             get => this.segments[index];
         }
 
-        public Mathc.VectorDouble Endpoint => SampleCurveFromArcLengthD(TotalArcLength);
+        public Mathc.VectorDouble Endpoint => this[^1].Endpoint.ToVD();
 
         public int PolylineCount { get { return this.inputPolyline.Count; } }
 
@@ -61,7 +62,7 @@ namespace ClothoidX
                 return segments[^1].ArcLengthEnd - segments[0].ArcLengthStart;
             }
         }
-        protected List<ClothoidSegment> segments = new List<ClothoidSegment>();
+        protected List<ClothoidSegment2> segments = new List<ClothoidSegment2>();
         protected List<Vector3> inputPolyline = new List<Vector3>();
 
         /// <summary>
@@ -87,29 +88,29 @@ namespace ClothoidX
         /// As far as I know it is only used in the SinghMcCrae solution.
         /// </summary>
         /// <param name="CURVE_FACTOR"></param>
-        public ClothoidCurve()
+        public ClothoidCurve2()
         {
-            this.segments = new List<ClothoidSegment>();
+            this.segments = new List<ClothoidSegment2>();
             this.inputPolyline = new List<Vector3>();
         }
 
-        public ClothoidCurve(List<Vector3> inputPolyline)
+        public ClothoidCurve2(List<Vector3> inputPolyline)
         {
-            this.segments = new List<ClothoidSegment>();
+            this.segments = new List<ClothoidSegment2>();
             this.inputPolyline = inputPolyline;
         }
 
-        public ClothoidCurve(List<ClothoidSegment> orderedSegments, List<Vector3> inputPolyline)
+        public ClothoidCurve2(List<ClothoidSegment2> orderedSegments, List<Vector3> inputPolyline)
         {
             this.segments = orderedSegments;
             this.inputPolyline = inputPolyline;
         }
 
         /// <summary>
-        /// Create a copy of a ClothoidCurve object. 
+        /// Create a copy of a ClothoidCurve2 object. 
         /// </summary>
         /// <param name="curve"></param>
-        public ClothoidCurve(ClothoidCurve curve) : this(CopySegments(curve), curve.inputPolyline)
+        public ClothoidCurve2(ClothoidCurve2 curve) : this(CopySegments(curve), curve.inputPolyline)
         {
             Offset = curve.Offset;
             AngleOffset = curve.AngleOffset;
@@ -162,7 +163,7 @@ namespace ClothoidX
             ClothoidX.Mathc.SVDJacobiProgram.MatShow(bestRotate, 2, 4);
         }
 
-        public ClothoidCurve AddSegment(ClothoidSegment newSegment)
+        public ClothoidCurve2 AddSegment(ClothoidSegment2 newSegment)
         {
             if (segments.Count > 0) newSegment.ShiftStartArcLength(segments[^1].ArcLengthEnd);
             else newSegment.ShiftStartArcLength(0);
@@ -170,7 +171,7 @@ namespace ClothoidX
             return this;
         }
 
-        public ClothoidCurve AddSegments(params ClothoidSegment[] segments)
+        public ClothoidCurve2 AddSegments(params ClothoidSegment2[] segments)
         {
             for (int i = 0; i < segments.Length; i++)
             {
@@ -198,34 +199,6 @@ namespace ClothoidX
             AngleOffset *= -1;
         }
 
-        public Mathc.VectorDouble SampleCurveFromArcLengthD(double arcLength)
-        {
-            Mathc.VectorDouble value = Mathc.VectorDouble.Zero;
-            Mathc.VectorDouble offset = Mathc.VectorDouble.Zero;
-            double rotation = 0; //radians
-            for (int i = 0; i < segments.Count; i++)
-            {
-                ClothoidSegment segment = segments[i];
-                if (arcLength >= segment.ArcLengthStart && arcLength <= segment.ArcLengthEnd)
-                {
-                    //Debug.Log($"Now sampling curve type: {segment.LineType}");
-                    value = segment.SampleSegmentByTotalArcLengthDouble(arcLength);
-                    //Console.WriteLine($"Sampled segment: {value}");
-                    value = Mathc.VectorDouble.RotateAboutAxis(value, Mathc.VectorDouble.UnitY, rotation);
-                    //Console.WriteLine($"Rotate sampled segment by {rotation} | {value}");
-                    value += offset;
-                    //Console.WriteLine($"After translation by {offset}: {value}");
-                    break;
-                }
-                offset += Mathc.VectorDouble.RotateAboutAxis(segment.Offset.ToVD(), Mathc.VectorDouble.UnitY, rotation);
-                rotation -= segment.Rotation; //apply rotation last since rotation is applied around the origin
-                //Debug.Log($"New offset and rotation along curve: {offset}, {rotation}");
-            }
-            value = Mathc.VectorDouble.RotateAboutAxis(value, Mathc.VectorDouble.UnitY, -AngleOffset);
-            value += Offset;
-            return value;
-        }
-
         /// <summary>
         /// Sample positions from this curve, without applying the input polyline transformations.
         /// In local space of the curve.
@@ -240,21 +213,21 @@ namespace ClothoidX
             double rotation = 0; //radians
             for (int i = 0; i < segments.Count; i++)
             {
-                ClothoidSegment segment = segments[i];
+                ClothoidSegment2 segment = segments[i];
                 if (arcLength >= segment.ArcLengthStart && arcLength <= segment.ArcLengthEnd)
                 {
                     //Debug.Log($"Now sampling curve type: {segment.LineType}");
                     value = segment.SampleSegmentByTotalArcLength(arcLength);
-                    value = ClothoidSegment.RotateAboutAxisRad(value, Vector3.UnitY, rotation);
+                    value = ClothoidSegment2.RotateAboutAxisRad(value, Vector3.UnitY, segment.Rotation);
                     //Debug.Log($"Rotate sampled segment by {rotation}");
-                    value += offset;
+                    value += segment.Position;
                     break;
                 }
-                offset += ClothoidSegment.RotateAboutAxisRad(segment.Offset, Vector3.UnitY, rotation);
+                offset += ClothoidSegment2.RotateAboutAxisRad(segment.RelativeEndpoint, Vector3.UnitY, rotation);
                 rotation -= segment.Rotation; //apply rotation last since rotation is applied around the origin
                 //Debug.Log($"New offset and rotation along curve: {offset}, {rotation}");
             }
-            value = ClothoidSegment.RotateAboutAxisRad(value, Vector3.UnitY, -AngleOffset);
+            value = ClothoidSegment2.RotateAboutAxisRad(value, Vector3.UnitY, -AngleOffset);
             //Debug.Log($"Rotate curve by {-AngleOffset}");
             value += Offset;
             return value;
@@ -289,41 +262,6 @@ namespace ClothoidX
 
             return points;
         }
-
-        /// <summary>
-        /// Utilizes double precision to sample the curve. This is not nearly as fast as the regular sampling method, and the precision is not much better.
-        /// I'm only leaving this here for now.
-        /// </summary>
-        /// <param name="numSamples"></param>
-        /// <returns></returns>
-        public List<Mathc.VectorDouble> GetSamplesD(int numSamples)
-        {
-            List<Mathc.VectorDouble> points = new List<Mathc.VectorDouble>();
-            Mathc.VectorDouble point;
-            double increment = TotalArcLength / numSamples;
-            //Debug.Log($"Increment size: {increment}, totalArcLength: {TotalArcLength}, numSamples: {numSamples}");
-            for (double arcLength = 0; arcLength < TotalArcLength; arcLength += increment)
-            {
-                point = SampleCurveFromArcLengthD(arcLength); //untranslated, unrotated
-                if (point == Mathc.VectorDouble.Zero && arcLength != 0) continue;
-                //UnityEngine.Debug.Log($"Curve CM before applying: {curveCM.X}, {curveCM.Y}, {curveCM.Z}");
-                //Console.WriteLine($"Point before translation: {point}");
-                point -= curveCM;
-                //Console.WriteLine($"Point after translation and before rotation: {point}");
-                point = GetRotatedPoint(point);
-                //Console.WriteLine($"Point after rotation and before final translation: {point}");
-                point += polylineCM;
-                //Console.WriteLine($"Point after final translation: {point}");
-                points.Add(point);
-            }
-            point = SampleCurveFromArcLengthD(TotalArcLength);
-            point -= curveCM;
-            point = GetRotatedPoint(point);
-            point += polylineCM;
-            points.Add(point);
-            return points;
-        }
-
         /// <summary>
         /// Rotates a point by the rotation matrix. Be sure to treat the unrotatedPoint and rotatedPoint as a column vector.
         /// Be sure to rotate only points that are centered on the origin, and then translate them by the polyline center of mass afterwards.
@@ -376,171 +314,6 @@ namespace ClothoidX
             point[2][0] = unrotatedPoint.Z;
             double[][] rotatedPoint = Mathc.SVDJacobiProgram.MatProduct(rotationMatrix, point);
             return new Mathc.VectorDouble(rotatedPoint[0][0], rotatedPoint[1][0], rotatedPoint[2][0]);
-        }
-
-        /// <summary>
-        /// Create some test segments and display them.
-        /// </summary>
-        /// <returns></returns>
-        public static IEnumerator<List<Vector3>> TestAllConnectionTypes(int a = 0, int b = 10, int c = 15, int d = 20, int e = 35, int f = 49)
-        {
-            ClothoidSegment lineSeg = new ClothoidSegment(0, b, 0, 0);
-            ClothoidSegment lineSeg2 = new ClothoidSegment(b, c, 0, 0);
-            ClothoidSegment cplus = new ClothoidSegment(0, b, 1, 1);
-            ClothoidSegment cplus2 = new ClothoidSegment(b, c, 1, 1);
-            ClothoidSegment cminus = new ClothoidSegment(0, b, -1, -1);
-            ClothoidSegment cminus2 = new ClothoidSegment(b, c, -1, -1);
-            ClothoidSegment clplus = new ClothoidSegment(0, b, 0, 1);
-            ClothoidSegment clplus2 = new ClothoidSegment(b, c, 0, 1);
-            ClothoidSegment clminus = new ClothoidSegment(0, b, 0, -1);
-            ClothoidSegment clminus2 = new ClothoidSegment(b, c, 0, -1);
-            ClothoidSegment clplusminus = new ClothoidSegment(0, b, 1, -1);
-            ClothoidSegment clplusminus2 = new ClothoidSegment(b, c, 1, -1);
-            ClothoidSegment clminusplus = new ClothoidSegment(0, b, -1, 1);
-            ClothoidSegment clminusplus2 = new ClothoidSegment(b, c, -1, 1);
-
-            ClothoidSegment[] segments = new ClothoidSegment[] { lineSeg, cplus, cminus, clplus, clminus, clplusminus, clminusplus };
-            ClothoidSegment[] segments2 = new ClothoidSegment[] { lineSeg2, cplus2, cminus2, clplus2, clminus2, clplusminus2, clminusplus2 };
-
-            for (int i = 0; i < segments.Length; i++)
-            {
-                for (int j = 0; j < segments2.Length; j++)
-                {
-                    ClothoidCurve curve = new ClothoidCurve(new List<ClothoidSegment>() { segments[i], segments2[j] }, new List<Vector3>());
-
-                    for (int k = 0; k < curve.segments.Count; k++)
-                    {
-                        //Console.WriteLine($"({i},{j}) Segment{k + 1}: {curve.segments[k]} -> {curve.segments[k].Description()}");
-                    }
-
-                    yield return curve.GetSamples(100);
-                }
-            }
-            yield break;
-        }
-
-        /// <summary>
-        /// Add a random curve using the sharpness constructor
-        /// </summary>
-        /// <returns></returns>
-        public ClothoidCurve AddRandomSegment2()
-        {
-            double sharpness;
-            double startCurvature;
-            double newArcLength = (new Random().NextDouble() * 4) + 5;
-            double shape = 0.5f;// UnityEngine.Random.value;
-
-            if (segments.Count > 0)
-            {
-                ClothoidSegment lastSegment = segments[^1];
-
-                if (shape > .66f)
-                {
-                    //line
-                    sharpness = 0;
-                    startCurvature = 0;
-                }
-                else if (shape < .33f)
-                {
-                    //circle
-                    sharpness = 0;
-                    startCurvature = lastSegment.EndCurvature;
-                }
-                else
-                {
-                    //clothoid
-                    sharpness = (new Random().NextDouble() * .06) - .03;
-                    startCurvature = lastSegment.EndCurvature;
-                }
-                ClothoidSegment newSegment = new ClothoidSegment(startCurvature, sharpness, newArcLength);
-                return AddSegment(newSegment);
-            }
-            else
-            {
-                if (shape > .66f)
-                {
-                    //line
-                    sharpness = 0;
-                    startCurvature = 0;
-                }
-                else if (shape < .33f)
-                {
-                    //circle
-                    sharpness = 0;
-                    startCurvature = new Random().NextDouble() - .5; //UnityEngine.Random.Range(-.5f, .5f);
-                }
-                else
-                {
-                    //clothoid
-                    sharpness = (new Random().NextDouble() * .06) - .03;
-                    startCurvature = (new Random().NextDouble() * .6) - .3;
-                }
-                ClothoidSegment newSegment = new ClothoidSegment(startCurvature, sharpness, newArcLength);
-                //Console.WriteLine($"new parameters: sharpness: {sharpness}, arcLength: {newArcLength}, startcurvature: {startCurvature}");
-                return AddSegment(newSegment);
-            }
-        }
-
-        /// <summary>
-        /// Add 3 random segments: a line segment followed by a clothoid transition to a circlar arc segment.
-        /// </summary>
-        /// <returns></returns>
-        public ClothoidCurve AddRandomSegment3()
-        {
-            float lineLength = (new Random().Next() * 5f) + 5f;
-            float clothoidLength = (new Random().Next() * 5f) + 5f;
-            float arcLength = (new Random().Next() * 5f) + 5f;
-            float sharpness = (new Random().Next() * .016f) - .008f;
-            float curvature = (new Random().Next() * .16f) - .08f;
-
-            ClothoidSegment lineSegment = new ClothoidSegment(0, 0, lineLength);
-            ClothoidSegment clothoidSegment = new ClothoidSegment(0, sharpness, clothoidLength);
-            ClothoidSegment circularSegment = new ClothoidSegment(clothoidSegment.EndCurvature, 0, arcLength);
-            return AddSegments(lineSegment, clothoidSegment, circularSegment);
-        }
-
-        public ClothoidCurve AddRandomSegment4()
-        {
-            float arcLength = (new Random().Next() * 5f) + 5f;
-            float curvature = (new Random().Next() * .16f) - .08f;
-
-            ClothoidSegment circularSegment = new ClothoidSegment(curvature, 0, arcLength);
-            return AddSegments(circularSegment);
-        }
-
-        public ClothoidCurve AddLine(double length)
-        {
-            return AddSegment(new ClothoidSegment(0, 0, length));
-        }
-
-        public static ClothoidCurve GetRandomCurve()
-        {
-            ClothoidCurve c = new ClothoidCurve();
-            float sharpness;
-            float startCurvature;
-            float newArcLength = (new Random().Next() * 4) + 5;
-            float shape = 0.5f;// UnityEngine.Random.value;
-            if (shape > .66f)
-            {
-                //line
-                sharpness = 0;
-                startCurvature = 0;
-            }
-            else if (shape < .33f)
-            {
-                //circle
-                sharpness = 0;
-                startCurvature = new Random().Next() - .5f;
-            }
-            else
-            {
-                //clothoid
-                sharpness = (new Random().Next() * .06f) - .03f;
-                startCurvature = (new Random().Next() * .6f) - .3f;
-            }
-            ClothoidSegment newSegment = new ClothoidSegment(startCurvature, sharpness, newArcLength);
-            //Console.WriteLine($"new parameters: sharpness: {sharpness}, arcLength: {newArcLength}, startcurvature: {startCurvature}");
-            return c.AddSegment(newSegment);
         }
 
         /// <summary>
@@ -609,9 +382,9 @@ namespace ClothoidX
         /// <param name="start"></param>
         /// <param name="end"></param>
         /// <returns></returns>
-        public static ClothoidCurve operator +(ClothoidCurve start, ClothoidCurve end)
+        public static ClothoidCurve2 operator +(ClothoidCurve2 start, ClothoidCurve2 end)
         {
-            ClothoidCurve result = new ClothoidCurve();
+            ClothoidCurve2 result = new ClothoidCurve2();
             //set the offsets the same as the start offset
             result.Offset = start.Offset;
             result.AngleOffset = start.AngleOffset;
@@ -628,9 +401,9 @@ namespace ClothoidX
             return result;
         }
 
-        public static ClothoidCurve operator +(ClothoidCurve start, ClothoidSegment newSegment)
+        public static ClothoidCurve2 operator +(ClothoidCurve2 start, ClothoidSegment2 newSegment)
         {
-            ClothoidCurve result = new ClothoidCurve
+            ClothoidCurve2 result = new ClothoidCurve2
             {
                 Offset = start.Offset,
                 AngleOffset = start.AngleOffset
@@ -644,29 +417,29 @@ namespace ClothoidX
         /// </summary>
         /// <param name="segments"></param>
         /// <returns></returns>
-        public static ClothoidCurve FromSegments(params ClothoidSegment[] segments)
+        public static ClothoidCurve2 FromSegments(params ClothoidSegment2[] segments)
         {
-            return new ClothoidCurve().AddSegments(segments);
+            return new ClothoidCurve2().AddSegments(segments);
         }
 
         /// <summary>
-        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a ClothoidCurve with N-1 ClothoidSegments
+        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a ClothoidCurve2 with N-1 ClothoidSegment2s
         /// </summary>
         /// <param name="lkNodes"></param>
         /// <returns></returns>
-        public static ClothoidCurve FromLKGraph(List<Vector3> lkNodes, List<Vector3> polyline)
+        public static ClothoidCurve2 FromLKGraph(List<Vector3> lkNodes, List<Vector3> polyline)
         {
-            ClothoidSegment[] segments = new ClothoidSegment[lkNodes.Count - 1];
+            ClothoidSegment2[] segments = new ClothoidSegment2[lkNodes.Count - 1];
             for (int segmentIndex = 0; segmentIndex + 1 < lkNodes.Count; segmentIndex++)
             {
-                segments[segmentIndex] = new ClothoidSegment(
+                segments[segmentIndex] = new ClothoidSegment2(Vector3.Zero,
                     lkNodes[segmentIndex].X,
                     lkNodes[segmentIndex + 1].X,
                     lkNodes[segmentIndex].Z,
                     lkNodes[segmentIndex + 1].Z);
                 //Console.WriteLine(segment.ToString());
             }
-            ClothoidCurve c = new ClothoidCurve(polyline);
+            ClothoidCurve2 c = new ClothoidCurve2(polyline);
             return c.AddSegments(segments);
         }
 
@@ -675,12 +448,12 @@ namespace ClothoidX
         /// </summary>
         /// <param name="curve"></param>
         /// <returns></returns>
-        public static List<ClothoidSegment> CopySegments(ClothoidCurve curve)
+        public static List<ClothoidSegment2> CopySegments(ClothoidCurve2 curve)
         {
-            List<ClothoidSegment> segments = new List<ClothoidSegment>();
+            List<ClothoidSegment2> segments = new List<ClothoidSegment2>();
             for (int i = 0; i < curve.Count; i++)
             {
-                segments.Add(new ClothoidSegment(curve[i].StartCurvature, curve[i].Sharpness, curve[i].TotalArcLength));
+                segments.Add(new ClothoidSegment2(curve.Endpoint, curve[i].Rotation, curve[i].StartCurvature, curve[i].Sharpness, curve[i].TotalArcLength));
             }
             return segments;
         }
@@ -693,28 +466,6 @@ namespace ClothoidX
                 s += segments[i].Description() + ", ";
             }
             return s;
-        }
-
-        /// <summary>
-        /// Return a three segment curve in local space. Start point is at the origin and start tangent is along the +X-axis.
-        /// </summary>
-        /// <param name="sharpness"></param>
-        /// <param name="arcLength1"></param>
-        /// <param name="arcLength2"></param>
-        /// <param name="arcLength3"></param>
-        /// <param name="startCurvature"></param>
-        /// <param name="endCurvature"></param>
-        /// <param name="start"></param>
-        /// <param name="end"></param>
-        /// <returns></returns>
-        public static ClothoidCurve ThreeSegmentsLocal(float startCurvature, float sharpness, float arcLength1, float arcLength2, float arcLength3)
-        {
-            ClothoidCurve c = new ClothoidCurve();
-            ClothoidSegment s1 = new ClothoidSegment(startCurvature, sharpness, arcLength1);
-            ClothoidSegment s2 = new ClothoidSegment(s1.EndCurvature, -sharpness, arcLength2);
-            ClothoidSegment s3 = new ClothoidSegment(s2.EndCurvature, sharpness, arcLength3);
-            return c.AddSegments(s1, s2, s3);
-            //return c.AddSegment(s1);
         }
     }
 }

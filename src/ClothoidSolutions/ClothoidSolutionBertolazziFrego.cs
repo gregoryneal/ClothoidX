@@ -40,15 +40,32 @@ namespace ClothoidX
             return c;
         }
 
+        public static ClothoidCurve2 G1Spline2(Posture[] data)
+        {
+            ClothoidCurve2 c = new ClothoidCurve2();
+            for (int i = 0; i + 1 < data.Length; i++)
+            {
+                c += G1S(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
+            }
+            return c;
+        }
+
         public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> points)
         {
             return G1Spline(Posture.CalculatePostures(points).ToArray());
+        }
+
+        public static ClothoidCurve2 G1Spline2(List<Mathc.VectorDouble> points)
+        {
+            return G1Spline2(Posture.CalculatePostures(points).ToArray());
         }
 
         public static ClothoidCurve G1Spline(List<Vector3> points)
         {
             return G1Spline(Posture.CalculatePostures(points).ToArray());
         }
+
+
 
         /// <summary>
         /// Get a G1 clothoid curve using two points and associated tangents.
@@ -111,6 +128,56 @@ namespace ClothoidX
             c.Offset = new Mathc.VectorDouble(x0, 0, z0);
             c.AngleOffset = t0;
             return c;
+        }
+
+        public static ClothoidSegment2 G1S(double x0, double z0, double t0, double x1, double z1, double t1)
+        {
+            double dx = x1 - x0;
+            double dz = z1 - z0;
+            double phi = Math.Atan2(dz, dx);
+            double r = Math.Sqrt((dx * dx) + (dz * dz));
+            double phi0 = NormalizeAngle(t0 - phi);
+            double phi1 = NormalizeAngle(t1 - phi);
+            double e = 1E-4;
+
+            if ((Math.Abs(phi0) < e && Math.Abs(phi1) == 0) || (phi0 + Math.PI < e && phi1 - Math.PI < e) || (phi0 - Math.PI < e && phi1 + Math.PI < e))
+            {
+                return new ClothoidSegment2(new Mathc.VectorDouble(x0, 0, z0), t0, 0, 0, r);
+            }
+
+            double d = phi1 - phi0;
+
+            //Calculate the bounds of the solution A_max and T_max
+            //double Tmax = Math.Max(0, PI_2 + (Math.Sign(phi1) * phi0));
+            //double Amax = Tmax == 0 ? absd : absd + (2 * Tmax * (1 + Math.Sqrt(1 + (absd / Tmax))));
+
+            double g;
+            double dg;
+            List<double[]> IntCS;
+            int u = 0;
+            double A = InitialGuessA(phi0, phi1);
+
+            do
+            {
+                IntCS = GeneralizedFresnelCS(3, 2 * A, d - A, phi0);
+                g = IntCS[1][0];
+                dg = IntCS[0][2] - IntCS[0][1];
+                A -= g / dg;
+            } while (++u < 30 && Math.Abs(g) > ROOT_TOLERANCE);
+
+            double[] intCS;
+
+            intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
+            double s = r / intCS[0];
+
+            double startCurvature = (d - A) / s;
+            double sharpness = 2 * A / (s * s);
+
+            /*ClothoidCurve c = ClothoidCurve.FromSegments(new ClothoidSegment(startCurvature, sharpness, s));
+            c.Offset = new Mathc.VectorDouble(x0, 0, z0);
+            c.AngleOffset = t0;*/
+            ClothoidSegment2 s2 = new ClothoidSegment2(new Mathc.VectorDouble(x0, 0, z0), t0, startCurvature, sharpness, s);
+            return s2;
         }
 
         /// <summary>

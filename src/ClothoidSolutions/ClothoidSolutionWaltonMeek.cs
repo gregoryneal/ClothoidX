@@ -76,6 +76,25 @@ namespace ClothoidX
             return c;
         }
 
+        public static ClothoidCurve2 G1Spline2(Posture[] data)
+        {
+            ClothoidCurve2 c = new ClothoidCurve2();
+            for (int i = 0; i + 1 < data.Length; i++)
+            {
+                c += G1S(data[i].PositionD, data[i].TangentD, data[i + 1].PositionD, data[i + 1].TangentD, TOL, MAXITER);
+                //Console.WriteLine($"G1(X0: {data[i].X}, Z0: {data[i].Z}, T0: {data[i].Angle}, X1: {data[i + 1].X}, Z1: {data[i + 1].Z}, T1: {data[i + 1].Angle})");
+            }
+            /*
+            c.Offset = data[0].PositionD;
+            c.AngleOffset = data[0].Angle;*/
+            return c;
+        }
+
+        public static ClothoidCurve2 G1Spline2(List<Mathc.VectorDouble> inputPolyline)
+        {
+            return G1Spline2(Posture.CalculatePostures(inputPolyline).ToArray());
+        }
+
         public static ClothoidCurve G1Spline(List<Vector3> inputPolyline)
         {
             return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
@@ -84,6 +103,126 @@ namespace ClothoidX
         public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> inputPolyline)
         {
             return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
+        }
+
+        /// <summary>
+        /// G1 Spline with ClothoidSegment2 as the output.
+        /// </summary>
+        /// <param name="P1"></param>
+        /// <param name="T1"></param>
+        /// <param name="P2"></param>
+        /// <param name="T2"></param>
+        /// <param name="tol"></param>
+        /// <param name="iterLim"></param>
+        /// <returns></returns>
+        public static ClothoidSegment2 G1S(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol, double iterLim)
+        {
+            Mathc.VectorDouble cacheP1 = new Mathc.VectorDouble(P1.X, 0, P1.Z);
+            bool reverseFlag = false;
+            Mathc.VectorDouble D = P2 - P1;
+            double d = D.Length;
+
+            if (d <= tol)
+            {
+                //degenerate case
+                return new ClothoidSegment2(Vector3.Zero, Math.Atan2(T1.Z, T1.X), 0, 0, 0);
+            }
+            else
+            {
+                double phi1 = Math.Atan2(Mathc.Cross2(T1, D), Mathc.VectorDouble.Dot(T1, D));
+                double phi2 = Math.Atan2(Mathc.Cross2(D, T2), Mathc.VectorDouble.Dot(D, T2));
+                //Console.WriteLine($"Phi1: {phi1}, Phi2: {phi2}, D: {D.Length}");
+
+                if (Math.Abs(phi1) > Math.Abs(phi2))
+                {
+                    reverseFlag = true;
+                    Reverse(ref phi1, ref phi2, ref P1, ref D);
+                }
+
+                bool reflectFlag = false;
+                if (phi2 < 0)
+                {
+                    reflectFlag = true;
+                    Reflect(ref phi1, ref phi2);
+                }
+
+                double k;
+                double dk;
+                double L;
+
+                if ((phi1 == 0 && phi2 == Math.PI) || (phi1 == Math.PI && phi2 == 0) || (phi1 == Math.PI && phi2 == Math.PI))
+                {
+                    //ambiguous case
+                    //perturb t1 or t2 and retry
+                    Random p = new Random();
+                    //perturbation amount
+                    double amt = (p.NextDouble() * .01) - .005;
+                    Vector3 v;
+                    if (p.NextDouble() > .5)
+                    {
+                        v = Mathc.VectorDouble.RotateAboutAxis(T1, Mathc.VectorDouble.UnitY, amt);
+                        T1 = new Mathc.VectorDouble(v.X, 0, v.Z);
+                    }
+                    else
+                    {
+                        v = Mathc.VectorDouble.RotateAboutAxis(T2, Mathc.VectorDouble.UnitY, amt);
+                        T2 = new Mathc.VectorDouble(v.X, 0, v.Z);
+                    }
+                    return G1S(P1, T1, P2, T2, tol, iterLim);
+                }
+                else if (Math.Abs(phi1) <= tol && Math.Abs(phi2) <= tol)
+                {
+                    //straight line segment
+                    //TODO: Rotate the line segment to actually interpolate the points between p1 and p2
+                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), 0, 0, D.Length);
+                    return s;
+                }
+                else if (Math.Abs(phi2 - phi1) <= tol)
+                {
+                    d = D.Length;
+                    //circular segment
+                    k = 2 * Math.Sin(phi1) / d;
+                    dk = 0;
+                    L = d * phi1 / Math.Sin(phi1);
+
+                    if (reverseFlag) k *= -1;
+                    if (reflectFlag) k *= -1;
+
+                    /*ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
+                    c.Offset = cacheP1;
+                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);*/
+
+                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
+                    return s;
+                }
+                else
+                {
+                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag);
+                    L = f.a * Math.Abs(f.t2 - f.t1);
+                    dk = Math.PI / (f.a * f.a);
+                    if (reverseFlag)
+                    {
+                        k = -Math.PI * f.t2 / f.a;
+                    }
+                    else
+                    {
+                        k = Math.PI * f.t1 / f.a;
+                    }
+                    if (reflectFlag)
+                    {
+                        k *= -1;
+                        dk *= -1;
+                    }
+
+                    /*
+                    ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
+                    c.Offset = cacheP1;
+                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);*/
+                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
+                    return s;
+                }
+
+            }
         }
 
         /// <summary>
