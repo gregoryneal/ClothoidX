@@ -4,7 +4,9 @@ using System.Numerics;
 
 namespace ClothoidX
 {
-    //TODO: remove Vector instances and use double[] instead for better precision.
+    /// <summary>
+    /// A version of ClothoidSegment with an updated sampling method that ensures G0 continuity of all input polyline nodes.
+    /// </summary>
     [Serializable]
     public class ClothoidSegment
     {
@@ -53,19 +55,43 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// The xz offset
+        /// The xz offset of the endpoint of this segment, relative to the Position.
         /// </summary>
-        public Vector3 Offset { get; private set; }
+        public Vector3 RelativeEndpoint { get; private set; }
+        /// <summary>
+        /// The start position of this segment.
+        /// </summary>
+        public Vector3 Position { get; private set; }
+
+        public Vector3 Endpoint { get => Position + RelativeEndpoint; }
 
         /// <summary>
         /// The angle of the endpoint tangent, in radians.
         /// </summary>
-        public double Rotation { get; private set; }
+        public double AngleEnd { get; private set; }
+        public double AngleStart { get; private set; }
 
         /// <summary>
         /// What type of segment is this? A line, a circular arc, or a clothoid segment.
         /// </summary>
         public LineType LineType { get; private set; }
+        public SolutionType SolutionType { get; private set; }
+
+        /// <summary>
+        /// If the curve position and rotation are approximated, this will be the center of mass of the generated curve in local space.
+        /// </summary>
+        protected Mathc.VectorDouble curveCM = Mathc.VectorDouble.Zero;
+
+        /// <summary>
+        /// If the curve position and rotation are approximated, this will be the center of mass of the input polyline nodes.
+        /// </summary>
+        protected Mathc.VectorDouble polylineCM = Mathc.VectorDouble.Zero;
+
+        /// <summary>
+        /// If the curve position and rotation are approximated, this will be a 3 column row vector that the curve sample point (3 row column vector)
+        /// gets multiplied by  after offsetting the point by the overall curve center of mass.
+        /// </summary>
+        protected double[][] rotationMatrix = Mathc.SVDJacobiProgram.MatMake(1, 3);
 
         /// <summary>
         /// This determines the clothoid segment parameters. All clothoids are calculated first in "standard" form. 
@@ -77,7 +103,7 @@ namespace ClothoidX
         /// <param name="startCurvature"></param>
         /// <param name="endCurvature"></param>
         /// <param name="B"></param>
-        public ClothoidSegment(double arcLengthStart, double arcLengthEnd, double startCurvature, double endCurvature, double B)
+        public ClothoidSegment(Vector3 position, double angleStart, double arcLengthStart, double arcLengthEnd, double startCurvature, double endCurvature, double B, SolutionType solutionType = SolutionType.BERTOLAZZIFREGO)
         {
             this.ArcLengthStart = arcLengthStart;
             this.ArcLengthEnd = arcLengthEnd;
@@ -88,19 +114,21 @@ namespace ClothoidX
             this.B = B;
             this._B = B;
             this.LineType = GetLineTypeFromCurvatureDiff(StartCurvature, EndCurvature);
-
+            this.Position = position;
+            this.AngleStart = angleStart;
             //Console.WriteLine($"I am a {this.LineType} - segment!");
+            SolutionType = solutionType;
             CalculateOffsetAndRotation();
         }
 
-        public ClothoidSegment(double arcLengthStart, double arcLengthEnd, double startCurvature, double endCurvature) : this(arcLengthStart, arcLengthEnd, startCurvature, endCurvature, CalculateB(arcLengthStart, arcLengthEnd, startCurvature, endCurvature)) { }
+        public ClothoidSegment(Vector3 position, double angleStart, double arcLengthStart, double arcLengthEnd, double startCurvature, double endCurvature, SolutionType solutionType = SolutionType.BERTOLAZZIFREGO) : this(position, angleStart, arcLengthStart, arcLengthEnd, startCurvature, endCurvature, CalculateB(arcLengthStart, arcLengthEnd, startCurvature, endCurvature), solutionType) { }
 
-        public ClothoidSegment(double startCurvature, double sharpness, double totalArcLength) : this(0, totalArcLength, startCurvature, (sharpness * totalArcLength) + startCurvature) { }
+        public ClothoidSegment(Vector3 position, double angleStart, double startCurvature, double sharpness, double totalArcLength, SolutionType solutionType = SolutionType.BERTOLAZZIFREGO) : this(position, angleStart, 0, totalArcLength, startCurvature, (sharpness * totalArcLength) + startCurvature, solutionType) { }
 
-        public ClothoidSegment(ClothoidSegment segment) : this(segment.StartCurvature, segment.Sharpness, segment.TotalArcLength) { }
+        public ClothoidSegment(ClothoidSegment segment) : this(segment.Position, segment.AngleStart, segment.StartCurvature, segment.Sharpness, segment.TotalArcLength, segment.SolutionType) { }
 
         /// <summary>
-        /// Calcluate the scaling factor for the constrained SinghMcCrae clothoid segment.
+        /// Calcluate the scaling factor for the clothoid segment.
         /// </summary>
         /// <returns></returns>
         public static double CalculateB(double arcLengthStart, double arcLengthEnd, double startCurvature, double endCurvature)
@@ -109,66 +137,11 @@ namespace ClothoidX
             double B = Math.Sqrt(arcLength / (Math.PI * Math.Abs(endCurvature - startCurvature)));
             return B;
         }
-
-        /// <summary>
-        /// Sample this segment instance in local space (without offsets and rotations added).
-        /// </summary>
-        /// <param name="arcLength"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        public Vector3 SampleSegmentByTotalArcLength(double arcLength)
+        public void AddBestFitTranslationRotation(Mathc.VectorDouble curveCM, Mathc.VectorDouble polylineCM, double[][] bestRotate)
         {
-            Vector3 v;
-            if (arcLength > ArcLengthEnd || arcLength < ArcLengthStart) throw new ArgumentOutOfRangeException();
-            double interp = (arcLength - ArcLengthStart) / TotalArcLength;
-            switch (this.LineType)
-            {
-                case LineType.LINE:
-                    v = new Vector3((float)(arcLength - ArcLengthStart), 0, 0);
-                    break;
-                case LineType.CIRCLE:
-                    //we build the circle constructively to find the point and rotation angle.
-                    //start with a positive or negative radius, and build a vector centered on the origin with the z value as the radius.
-                    //rotate the point by the desired theta, positive theta rotates in the clockwise direction, negative values are ccw.
-                    //now subtract the final z value by the radius (point.z -= radius) to get the final offset. 
-                    double radius = -2f / (StartCurvature + EndCurvature); //this might be positive or negative
-                    double circumference = 2 * Math.PI * radius;
-                    double fullSweepAngle_deg = 360f * TotalArcLength / circumference;
-                    double rotationAngle = interp * fullSweepAngle_deg; //same here, value in degrees
-                    //Vector3 vector = RotateAboutAxisDeg(new Vector3(0, 0, (float)radius), Vector3.UnitY, rotationAngle);
-                    Vector3 vector = RotateAboutAxisRad(new Vector3(0, 0, (float)radius), Vector3.UnitY, interp * TotalArcLength / radius);
-                    v = new Vector3(vector.X, vector.Y, (float)(vector.Z - radius));
-                    //return new Vector3(vector.x, vector.y, isMirroredX ? radius - vector.z : vector.z - radius);
-                    break;
-                default:
-                    //clothoid
-                    v = this.SampleClothoid(interp);
-                    break;
-            }
-
-            //if (Sharpness == 0) v = new Vector3(v.x, v.y, -v.z);
-            return v;
-        }
-
-        public Mathc.VectorDouble SampleSegmentByTotalArcLengthDouble(double arcLength)
-        {
-            if (arcLength > ArcLengthEnd || arcLength < ArcLengthStart) throw new ArgumentOutOfRangeException();
-            double interp = (arcLength - ArcLengthStart) / TotalArcLength;
-            switch (this.LineType)
-            {
-                case LineType.LINE:
-                    return new Mathc.VectorDouble(arcLength - ArcLengthStart, 0, 0);
-                case LineType.CIRCLE:
-                    double radius = -2f / (StartCurvature + EndCurvature); //this might be positive or negative
-                    double circumference = 2 * Math.PI * radius;
-                    //double fullSweepAngle_deg = 360.0 * TotalArcLength / circumference;
-                    //double rotationAngle = interp * fullSweepAngle_deg; //same here, value in radians
-                    double rot = interp * TotalArcLength / radius;
-                    Mathc.VectorDouble vector = Mathc.VectorDouble.RotateAboutAxis(new Mathc.VectorDouble(0, 0, radius), Mathc.VectorDouble.UnitY, rot);
-                    return new Mathc.VectorDouble(vector.X, vector.Y, vector.Z - radius);
-                default:
-                    return SampleClothoidD(interp);
-            }
+            this.curveCM = curveCM;
+            this.polylineCM = polylineCM;
+            this.rotationMatrix = bestRotate;
         }
 
         /// <summary>
@@ -189,21 +162,58 @@ namespace ClothoidX
         /// <returns></returns>
         public Vector3 SampleSegmentByRelativeLength(double value)
         {
-            if (value < 0 || value > 1) throw new ArgumentOutOfRangeException();
+            if (value < 0) value = 0;
+            if (value > 1) value = 1;
             double totalArcLength = ArcLengthStart + (value * (ArcLengthEnd - ArcLengthStart));
-            return SampleSegmentByTotalArcLength(totalArcLength);
+            return GetSample(totalArcLength);
         }
 
         public List<Vector3> GetSamples(int numSamples)
         {
-            List<Vector3> points = new List<Vector3>();
-            for (int i = 0; i < numSamples - 1; i++)
+            List<Vector3> samples;
+            switch (SolutionType)
             {
-                points.Add(SampleSegmentByRelativeLength(i / (numSamples - 1)));
+                case SolutionType.BERTOLAZZIFREGO:
+                    //Console.WriteLine("Using Bertolazzi Frego solution for sampling multiple");
+                    samples = ClothoidSolutionBertolazziFrego.Eval(TotalArcLength, StartCurvature, Sharpness, AngleStart, new Mathc.VectorDouble(Position), numSamples).ConvertAll<Vector3>(a => a);
+                    break;
+                case SolutionType.SINGHMCCRAE:
+                    //Console.WriteLine("Using Singh McCrae solution for sampling multiple");
+                    samples = ClothoidSolutionSinghMcCrae.Eval(this, curveCM, polylineCM, rotationMatrix, numSamples);
+                    break;
+                default:
+                    //Console.WriteLine("Using Bertolazzi Frego solution for sampling multiple");
+                    samples = ClothoidSolutionBertolazziFrego.Eval(TotalArcLength, StartCurvature, Sharpness, AngleStart, new Mathc.VectorDouble(Position), numSamples).ConvertAll<Vector3>(a => a);
+                    break;
             }
-            //do the endpoint manually
-            points.Add(SampleSegmentByRelativeLength(1));
-            return points;
+            return samples;
+        }
+
+        /// <summary>
+        /// Evaluate the segment at an arc length value between 0 and TotalArcLength.
+        /// </summary>
+        /// <param name="arcLength"></param>
+        /// <returns></returns>
+        public Vector3 GetSample(double arcLength)
+        {
+            Vector3 sample;
+            switch (SolutionType)
+            {
+                case SolutionType.BERTOLAZZIFREGO:
+                    //Console.WriteLine("Using Bertolazzi Frego solution for sampling");
+                    //Console.WriteLine($"Params: arcLength: {arcLength}, StartCurvature: {StartCurvature}, Sharpness: {Sharpness}, AngleStart: {AngleStart}, Position: {Position}");
+                    sample = ClothoidSolutionBertolazziFrego.EvalArcLength(arcLength, StartCurvature, Sharpness, AngleStart, new Mathc.VectorDouble(Position));
+                    break;
+                case SolutionType.SINGHMCCRAE:
+                    //Console.WriteLine("Using Singh McCrae solution for sampling");
+                    sample = ClothoidSolutionSinghMcCrae.EvalAtArcLength(arcLength, this, curveCM, polylineCM, rotationMatrix);
+                    break;
+                default:
+                    //Console.WriteLine("Using Bertolazzi Frego solution for sampling");
+                    sample = ClothoidSolutionBertolazziFrego.EvalArcLength(arcLength, StartCurvature, Sharpness, AngleStart, new Mathc.VectorDouble(Position));
+                    break;
+            }
+            return sample;
         }
 
         /// <summary>
@@ -216,15 +226,15 @@ namespace ClothoidX
             switch (this.LineType)
             {
                 case LineType.LINE:
-                    Console.WriteLine("Line segment");
+                    //Console.WriteLine("Line segment");
                     return 0;
                 case LineType.CIRCLE:
-                    Console.WriteLine("Circle segment");
+                    //Console.WriteLine("Circle segment");
                     double radius = 2f / (StartCurvature + EndCurvature); //this might be positive or negative
                     double circumference = 2 * Math.PI * radius;
                     return 2 * Math.PI * arcLength / circumference;
                 default:
-                    Console.WriteLine("Clothoid segment");
+                    //Console.WriteLine("Clothoid segment");
                     return (Sharpness * arcLength * arcLength / 2) + (StartCurvature * arcLength);
             }
         }
@@ -256,7 +266,7 @@ namespace ClothoidX
         /// Lines are generated in the positive X direction, circles with negative radius (Left turning) are generate in the positive z planar subsection,
         /// centered on the y axis. Clothoids are generated in the positive X direction, but can turn into the positive or negative z direction.
         /// 
-        /// Rotations are calculated as follows: for lines there is no rotation, so it is 0. For circles it is calculated by the ratio 360deg * (arcLength / circumference).
+        /// Rotations are calculated as follows: for lines there is no rotation, so it is 0. For circles it is calculated by the arc length / circumference ratio multiplied.
         /// Clothoids are calculated with (EndCurvature - StartCurvature) * ArcLengthEnd * ArcLengthEnd / (2 * (ArcLengthEnd - ArcLengthStart)) 
         /// </summary>
         protected void CalculateOffsetAndRotation()
@@ -264,8 +274,8 @@ namespace ClothoidX
             switch (this.LineType)
             {
                 case LineType.LINE:
-                    this.Offset = new Vector3((float)TotalArcLength, 0, 0);
-                    this.Rotation = 0;
+                    //this.RelativeEndpoint = new Vector3((float)TotalArcLength, 0, 0);
+                    this.AngleEnd = 0;
                     break;
                 case LineType.CIRCLE:
                     //we build the circle constructively to find the point and rotation angle.
@@ -284,8 +294,8 @@ namespace ClothoidX
                         vector = RotateAboutAxisRad(new Vector3(0, 0, (float)radius), Vector3.UnitY, rotationAngle);
                         //Console.WriteLine($"Circle offset before radius subtraction: {vector}");
                         vector = new Vector3(vector.X, vector.Y, (float)(vector.Z - radius));
-                        this.Rotation = -rotationAngle;
-                        this.Offset = vector;
+                        this.AngleEnd = -rotationAngle;
+                        //this.RelativeEndpoint = vector;
                     }
                     else
                     {
@@ -293,8 +303,8 @@ namespace ClothoidX
                         vector = RotateAboutAxisRad(new Vector3(0, 0, (float)-radius), Vector3.UnitY, -rotationAngle);
                         //Console.WriteLine($"Circle offset before radius addition: {vector}");
                         vector = new Vector3(vector.X, vector.Y, (float)(vector.Z + radius));
-                        this.Rotation = rotationAngle;
-                        this.Offset = vector;
+                        this.AngleEnd = rotationAngle;
+                        //this.RelativeEndpoint = vector;
                         //Console.WriteLine($"Circle Offset: {Offset} | Rotation: {Rotation}");
                     }
                     //Console.WriteLine($"Circle stats: radius: {radius}, negativeCurvature: {negativeCurvature}, circumference: {circumference}...");
@@ -303,22 +313,18 @@ namespace ClothoidX
                 default:
                     //clothoid
                     //the angle is represented by the difference of squares of the scaled curvature parameters.
-                    this.Offset = SampleClothoid(1);
+                    //this.RelativeEndpoint = SampleClothoidLocal(1);
                     //float c = (float)System.Math.Sqrt(System.Math.PI/2);
                     double t1 = StartCurvature * B * CURVE_FACTOR;
                     double t2 = EndCurvature * B * CURVE_FACTOR;
                     //this.Rotation = - TotalArcLength * EndCurvature * 180 / (2 * Mathf.PI);
 
-                    if (t2 > t1) this.Rotation = (t2 * t2) - (t1 * t1);// * 180f / Mathf.PI;
-                    else this.Rotation = (t1 * t1) - (t2 * t2);// * 180f / Mathf.PI;
+                    if (t2 > t1) this.AngleEnd = (t2 * t2) - (t1 * t1);// * 180f / Mathf.PI;
+                    else this.AngleEnd = (t1 * t1) - (t2 * t2);// * 180f / Mathf.PI;
                     break;
             }
-
-            //Console.WriteLine($"New Segment End tangent angle: {this.Rotation}");
-
-            /*if (isMirroredX) {
-                this.Rotation += 180;
-            }*/
+            this.RelativeEndpoint = GetSample(TotalArcLength) - Position;
+            this.AngleEnd += AngleStart;
         }
 
         /// <summary>
@@ -330,7 +336,7 @@ namespace ClothoidX
         /// <param name="curvatureEnd"></param>
         /// <param name="interpolation"></param>
         /// <returns></returns>
-        public static Vector3 SampleClothoidSegment(double arcLengthStart, double arcLengthEnd, double curvatureStart, double curvatureEnd, double interpolation)
+        public static Vector3 SampleClothoidSegment2(double arcLengthStart, double arcLengthEnd, double curvatureStart, double curvatureEnd, double interpolation)
         {
             double arcLength = arcLengthEnd - arcLengthStart;
             double curveDiff = curvatureEnd - curvatureStart;
@@ -399,15 +405,12 @@ namespace ClothoidX
         /// </summary>
         /// <param name="interpolation"></param>
         /// <returns></returns>
-        public Vector3 SampleClothoid(double interpolation)
+        public Vector3 SampleClothoidLocal(double interpolation)
         {
             double t1 = StartCurvature * B * CURVE_FACTOR;
             double t2 = EndCurvature * B * CURVE_FACTOR;
             double t = t1 + (interpolation * (t2 - t1));
             Vector3 s = SampleClothoidSegment(t1, t2, t);
-
-            //if (isMirroredX) return B * Mathf.PI * new Vector3(s.x, s.y, -s.z);
-            /*else */
             return (float)(B * Math.PI) * s;
         }
 
@@ -440,7 +443,7 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a list of N-1 ClothoidSegments
+        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a list of N-1 ClothoidSegment2s
         /// </summary>
         /// <param name="lkNodes"></param>
         /// <returns></returns>
@@ -453,7 +456,7 @@ namespace ClothoidX
                 float arcLengthEnd = lkNodes[segmentIndex + 1].X;
                 float startCurvature = lkNodes[segmentIndex].Z;
                 float endCurvature = lkNodes[segmentIndex + 1].Z;
-                ClothoidSegment segment = new ClothoidSegment(arcLengthStart, arcLengthEnd, startCurvature, endCurvature);
+                ClothoidSegment segment = new ClothoidSegment(Vector3.Zero, arcLengthStart, arcLengthEnd, startCurvature, endCurvature);
                 segments.Add(segment);
                 //Console.WriteLine(segment.ToString());
             }
@@ -488,7 +491,7 @@ namespace ClothoidX
 
         public override string ToString()
         {
-            return $"LineType {LineType} | ArcLengthStart {ArcLengthStart} | ArcLengthEnd {ArcLengthEnd} | StartCurvature {StartCurvature} | EndCurvature {EndCurvature} | B {B}";
+            return $"LineType {LineType} | TotalArcLength {TotalArcLength} | StartCurvature {StartCurvature} | Sharpness {Sharpness} | EndCurvature {EndCurvature} | AngleStart {AngleStart} | B {B}";
         }
 
         public string Description()

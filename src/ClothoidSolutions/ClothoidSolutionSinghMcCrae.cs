@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace ClothoidX
@@ -9,6 +10,7 @@ namespace ClothoidX
     /// </summary>
     public static class ClothoidSolutionSinghMcCrae
     {
+        private const double CURVE_FACTOR = 1.2533141373155; // sqrt(pi / 2)
         /// <summary>
         /// Approximate an input polyine with a ClothoidCurve composed of segments with G2 continuity.
         /// Uses the method described by Singh McCrae in Computers & Graphics 33 (2009) 452–461:
@@ -49,16 +51,198 @@ namespace ClothoidX
             //run the segmenting algorithm given by Singh & McCrae to regress the LK graph into approximate linear segments.
             List<Vector3> segmentedNodes = SegmentedRegression3(lkNodes, .01f);
             //build the initial curve from the segments, this is in local space so it doesn't line up with our polyline yet.
-            ClothoidCurve c = ClothoidCurve.FromLKGraph(segmentedNodes, polyline);
+            ClothoidCurve c = FromLKGraph(segmentedNodes, polyline);
 
             //sample the actual curve at the estimated node arc lengths
             List<Vector3> curveSamples = GetCurveSamples(c, lkNodes);
             //center of mass of the polyline and curve as they currently sit
             List<Vector3> centerOfMass = GetCenterOfMass(polyline, curveSamples, 1);
+
+            //Vector3 startPosition = polyline[0];
+
+
             //get the rotation matrix required to align the two curves
             double[][] rotationMatrix = GetRotationMatrix(polyline, curveSamples, centerOfMass[0], centerOfMass[1]);
+            //use the rotation matrix to find the rotation angle
+            //double angle = Math.Acos(rotationMatrix[0][0]);
             c.AddBestFitTranslationRotation(centerOfMass[0].ToVD(), centerOfMass[1].ToVD(), rotationMatrix);
             return c;
+        }
+
+        /// <summary>
+        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a ClothoidCurve2 with N-1 ClothoidSegment2s.
+        /// </summary>
+        /// <param name="lkNodes"></param>
+        /// <returns></returns>
+        public static ClothoidCurve FromLKGraph(List<Vector3> lkNodes, List<Vector3> polyline)
+        {
+            ClothoidSegment[] segments = new ClothoidSegment[lkNodes.Count - 1];
+            Vector3 offset = Vector3.Zero;
+            double angle = 0;
+            for (int segmentIndex = 0; segmentIndex + 1 < lkNodes.Count; segmentIndex++)
+            {
+                segments[segmentIndex] = new ClothoidSegment(
+                    offset,
+                    angle,
+                    lkNodes[segmentIndex].X,
+                    lkNodes[segmentIndex + 1].X,
+                    lkNodes[segmentIndex].Z,
+                    lkNodes[segmentIndex + 1].Z,
+                    SolutionType.SINGHMCCRAE);
+                //Console.WriteLine(segment.ToString());
+                offset += segments[segmentIndex].RelativeEndpoint;
+                angle = segments[segmentIndex].AngleEnd;
+            }
+            ClothoidCurve c = new ClothoidCurve(polyline);
+            return c.AddSegments(segments);
+        }
+
+        /// <summary>
+        /// Rotate a point by a rotation matrix.
+        /// </summary>
+        /// <param name="unrotatedPoint"></param>
+        /// <param name="rotationMatrix"></param>
+        /// <returns></returns>
+        private static Vector3 GetRotatedPoint(Vector3 unrotatedPoint, double[][] rotationMatrix)
+        {
+            if (rotationMatrix == null) return unrotatedPoint;
+            bool isZero = true;
+            for (int i = 0; i < rotationMatrix.Length; i++)
+            {
+                if (!rotationMatrix[i].All(x => x == 0))
+                {
+                    isZero = false;
+                    break;
+                }
+            }
+            if (isZero)
+            {
+                return unrotatedPoint;
+            }
+            double[][] point = Mathc.SVDJacobiProgram.MatMake(3, 1);
+            point[0][0] = unrotatedPoint.X;
+            point[1][0] = unrotatedPoint.Y;
+            point[2][0] = unrotatedPoint.Z;
+            double[][] rotatedPoint = Mathc.SVDJacobiProgram.MatProduct(rotationMatrix, point);
+            return new Vector3((float)rotatedPoint[0][0], (float)rotatedPoint[1][0], (float)rotatedPoint[2][0]);
+        }
+
+        /// <summary>
+        /// Generate samples of the curve in world space.
+        /// </summary>
+        /// <param name="c"></param>
+        /// <param name="cmCurve"></param>
+        /// <param name="cmPolyline"></param>
+        /// <param name="rotationMatrix"></param>
+        /// <param name="numPoints"></param>
+        /// <returns></returns>
+        public static List<Vector3> Eval(ClothoidCurve c, Vector3 cmCurve, Vector3 cmPolyline, double[][] rotationMatrix, int numPoints)
+        {
+            List<Vector3> samples = new List<Vector3>(numPoints);
+            double increment = c.TotalArcLength / (numPoints - 1);
+            for (double arcLength = 0; arcLength < c.TotalArcLength; arcLength += increment)
+            {
+                for (int i = 0; i < c.Count; i++)
+                {
+                    if (arcLength <= c[i].ArcLengthEnd && arcLength >= c[i].ArcLengthStart)
+                    {
+                        //sample the curve at the given arc length
+                        samples.Add(EvalAtArcLength(arcLength, c[i], cmCurve, cmPolyline, rotationMatrix));
+                        break;
+                    }
+                }
+            }
+            samples.Add(EvalAtArcLength(c.TotalArcLength, c[^1], cmCurve, cmPolyline, rotationMatrix)); //ensure the last point is included
+            return samples;
+        }
+
+        public static List<Vector3> Eval(ClothoidSegment c, Vector3 cmCurve, Vector3 cmPolyline, double[][] rotationMatrix, int numPoints)
+        {
+            List<Vector3> samples = new List<Vector3>(numPoints);
+            double increment = c.TotalArcLength / (numPoints - 1);
+            for (double arcLength = 0; arcLength < c.TotalArcLength; arcLength += increment)
+            {
+                samples.Add(EvalAtArcLength(arcLength, c, cmCurve, cmPolyline, rotationMatrix));
+            }
+            samples.Add(EvalAtArcLength(c.TotalArcLength, c, cmCurve, cmPolyline, rotationMatrix)); //ensure the last point is included
+            return samples;
+        }
+
+        /// <summary>
+        /// Evaluate a SinghMcCrae generated ClothoidCurve at a given arc length.
+        /// </summary>
+        /// <param name="arcLength"></param>
+        /// <param name="c"></param>
+        /// <returns></returns>
+        public static Vector3 EvalAtArcLength(double arcLength, ClothoidSegment c, Vector3 cmCurve, Vector3 cmPolyline, double[][] rotationMatrix)
+        {
+            Vector3 sample = SampleSegmentLocalSpace(arcLength, c);
+            //apply the rotation and translation to the sample
+            sample -= cmCurve;
+            sample = GetRotatedPoint(sample, rotationMatrix);
+            sample += cmPolyline;
+            return sample;
+        }
+
+        private static Mathc.VectorDouble SampleClothoidLocal(double t1, double t2, double t)
+        {
+            Mathc.VectorDouble point = new Mathc.VectorDouble(Mathc.C(t), 0, Mathc.S(t)) - new Mathc.VectorDouble(Mathc.C(t1), 0, Mathc.S(t1));
+            if (t2 > t1)
+            {
+                point = Mathc.VectorDouble.RotateAboutAxis(point, Mathc.VectorDouble.UnitY, t1 * t1);
+            }
+            else
+            {
+                point = Mathc.VectorDouble.RotateAboutAxis(point, Mathc.VectorDouble.UnitY, t1 * t1 + Math.PI);
+                point = new Mathc.VectorDouble(point.X, point.Y, -point.Z);
+            }
+            return point / CURVE_FACTOR;
+        }
+
+        private static Mathc.VectorDouble SampleClothoidLocal(double interpolation, ClothoidSegment segment)
+        {
+            double t1 = segment.StartCurvature * segment.B * CURVE_FACTOR;
+            double t2 = segment.EndCurvature * segment.B * CURVE_FACTOR;
+            double t = t1 + (interpolation * (t2 - t1));
+            Mathc.VectorDouble s = SampleClothoidLocal(t1, t2, t);
+            return segment.B * Math.PI * s;
+        }
+
+        public static Mathc.VectorDouble SampleSegmentLocalSpace(double arcLength, ClothoidSegment segment)
+        {
+            if (arcLength > segment.ArcLengthEnd || arcLength < segment.ArcLengthStart) throw new ArgumentOutOfRangeException();
+            Mathc.VectorDouble v;
+            double interp = (arcLength - segment.ArcLengthStart) / segment.TotalArcLength;
+            switch (segment.LineType)
+            {
+                case LineType.LINE:
+                    v = new Mathc.VectorDouble(arcLength - segment.ArcLengthStart, 0, 0);
+                    break;
+                case LineType.CIRCLE:
+                    double radius = -2f / (segment.StartCurvature + segment.EndCurvature); //this might be positive or negative
+                    double circumference = 2 * Math.PI * radius;
+                    //double fullSweepAngle_deg = 360.0 * TotalArcLength / circumference;
+                    //double rotationAngle = interp * fullSweepAngle_deg; //same here, value in radians
+                    double rot = interp * segment.TotalArcLength / radius;
+                    Mathc.VectorDouble vector = Mathc.VectorDouble.RotateAboutAxis(new Mathc.VectorDouble(0, 0, radius), Mathc.VectorDouble.UnitY, rot);
+                    v = new Mathc.VectorDouble(vector.X, vector.Y, vector.Z - radius);
+                    break;
+                default:
+                    v = SampleClothoidLocal(interp, segment);
+                    break;
+            }
+
+            v = Mathc.VectorDouble.RotateAboutAxis(v, Mathc.VectorDouble.UnitY, -segment.AngleStart);
+            v += new Mathc.VectorDouble(segment.Position);
+            return v;
+        }
+
+        public static Mathc.VectorDouble SampleSegmentByRelativeLengthD(double value, ClothoidSegment segment)
+        {
+            if (value < 0) value = 0;
+            if (value > 1) value = 1;
+            double totalArcLength = segment.ArcLengthStart + (value * (segment.ArcLengthEnd - segment.ArcLengthStart));
+            return SampleSegmentLocalSpace(totalArcLength, segment);
         }
 
         /// <summary>
@@ -211,7 +395,7 @@ namespace ClothoidX
             Vector3 point2 = polyline[polylineNodeIndex];
             Vector3 point3 = polyline[polylineNodeIndex + 1];
             //negatize the curvature because in this solution the convention is that positive curvature is a right turn, opposite to most conventions
-            return new Vector3(ClothoidCurve.EstimateArcLength(polyline, polylineNodeIndex), 0, (float)-ClothoidX.Mathc.MoretonSequinCurvature(point1, point2, point3));
+            return new Vector3(ClothoidCurve.EstimateArcLength(polyline, polylineNodeIndex), 0, (float)-Mathc.MoretonSequinCurvature(point1.ToVD(), point2.ToVD(), point3.ToVD()));
         }
 
         /// <summary>

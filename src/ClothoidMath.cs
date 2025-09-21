@@ -221,19 +221,6 @@ namespace ClothoidX
         /// </summary>
         /// <param name="arcLength"></param>
         /// <returns></returns>
-        /*public static float C(float arcLength)
-        {
-            arcLength /= ClothoidSegment.CURVE_FACTOR;
-            int scalar = 1;
-            if (arcLength < 0)
-            {
-                scalar = -1;
-                arcLength *= -1;
-            }
-            float val = .5f - (R(arcLength) * (float)System.Math.Sin(System.Math.PI * 0.5f * (A(arcLength) - (arcLength * arcLength))));
-            return scalar * val * ClothoidSegment.CURVE_FACTOR;
-        }*/
-
         public static double C(double arcLength)
         {
             arcLength /= ClothoidSegment.CURVE_FACTOR;
@@ -252,19 +239,6 @@ namespace ClothoidX
         /// </summary>
         /// <param name="arcLength"></param>
         /// <returns></returns>
-        /*public static float S(float arcLength)
-        {
-            arcLength /= ClothoidSegment.CURVE_FACTOR;
-            int scalar = 1;
-            if (arcLength < 0)
-            {
-                scalar = -1;
-                arcLength *= -1;
-            }
-            float val = 0.5f - (R(arcLength) * (float)System.Math.Cos(System.Math.PI * 0.5f * (A(arcLength) - (arcLength * arcLength))));
-            return scalar * val * ClothoidSegment.CURVE_FACTOR;
-        }*/
-
         public static double S(double arcLength)
         {
             arcLength /= ClothoidSegment.CURVE_FACTOR;
@@ -312,28 +286,6 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// Approximate the curvature of the circum-circle that passes through all three points.
-        /// If they are collinear, return 0, if any of the points are coincident, also return 0.
-        /// </summary>
-        /// <param name="point1"></param>
-        /// <param name="point2"></param>
-        /// <param name="point3"></param>
-        /// <returns>A positive only value curvature.</returns>
-        public static float MengerCurvature(Vector3 point1, Vector3 point2, Vector3 point3)
-        {
-            if (point1 == point2 || point2 == point3 || point1 == point3) return 0;
-            float a = Vector3.Distance(point1, point2);
-            float b = Vector3.Distance(point2, point3);
-            float c = Vector3.Distance(point1, point3);
-            float s = (a + b + c) / 2; //half perimeter
-            float area = (float)Math.Sqrt(s * (s - a) * (s - b) * (s - c)); //herons forumula
-            if (area == 0) return 0; //collinear points
-            float numerator = 4 * area;
-            float denominator = a * b * c;
-            return numerator / denominator;
-        }
-
-        /// <summary>
         /// Discrete curvature estimation given by Moreton and Sequin in 1992.
         /// This one is the most useful since is distinguishes between positive and 
         /// negative curvature. Positive curvature corresponds to a left turn, and
@@ -343,14 +295,6 @@ namespace ClothoidX
         /// <param name="point2"></param>
         /// <param name="point3"></param>
         /// <returns></returns>
-        public static double MoretonSequinCurvature(Vector3 point1, Vector3 point2, Vector3 point3)
-        {
-            Vector3 v1 = point2 - point1;
-            Vector3 v2 = point3 - point2;
-            double det = (v1.X * v2.Z) - (v2.X * v1.Z);
-            return 2 * det / (v1.Length() * v2.Length() * (v1 + v2).Length());
-        }
-
         public static double MoretonSequinCurvature(VectorDouble point1, VectorDouble point2, VectorDouble point3)
         {
             VectorDouble v1 = point2 - point1;
@@ -360,44 +304,13 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// Basically the same as the absolute value of the MoretonSequinCurvature()
-        /// </summary>
-        /// <param name="point1"></param>
-        /// <param name="point2"></param>
-        /// <param name="point3"></param>
-        /// <returns></returns>
-        public static double FrenetSerretCurvature(Vector3 point1, Vector3 point2, Vector3 point3)
-        {
-            Vector3 v1 = point2 - point1;
-            Vector3 v2 = point3 - point2;
-            float mag1 = v1.Length();
-            float mag2 = v2.Length();
-            if (mag1 == 0 || mag2 == 0) return 0;
-            double theta = Math.Acos(Vector3.Dot(Vector3.Normalize(v1), Vector3.Normalize(v2)));
-            return 2 * Math.Sin(theta / 2) / Math.Sqrt(mag1 * mag2);
-        }
-
-        /// <summary>
         /// Checks if the three provided points are colinear in the XZ plane.
         /// </summary>
         /// <param name="point1"></param>
         /// <param name="point2"></param>
         /// <param name="point3"></param>
         /// <returns></returns>
-        public static bool AreColinearPoints(Vector3 point1, Vector3 point2, Vector3 point3, float minError = 0.01f)
-        {
-            float dx1 = point2.X - point1.X;
-            float dx2 = point3.X - point2.X;
-
-            //Infinite slope1 and maybe infinite slope 2
-            if (dx1 == 0) return dx2 == 0;
-            //Infinite slope2 but finite slope1
-            else if (dx2 == 0) return false;
-            //Slope1 and slope2 are finite
-            else return Math.Abs(((point2.Z - point1.Z) / dx1) - ((point3.Z - point2.Z) / dx2)) < minError;
-        }
-
-        public static bool AreColinearPoints(VectorDouble point1, VectorDouble point2, VectorDouble point3, float minError = 0.01f)
+        public static bool AreColinearPoints(VectorDouble point1, VectorDouble point2, VectorDouble point3, double minError = 1E-4)
         {
             double dx1 = point2.X - point1.X;
             double dx2 = point3.X - point2.X;
@@ -417,29 +330,6 @@ namespace ClothoidX
         /// <param name="point2"></param>
         /// <param name="point3"></param>
         /// <returns></returns>
-        public static bool CenterOfCircleOfThreePoints(out Vector3 center, Vector3 point1, Vector3 point2, Vector3 point3)
-        {
-            center = point1;
-            //chord of point1 and 2
-            (float, float) line1 = EquationOfLineFromTwoPoints(point1, point2);
-            //chord of point2 and 3
-            (float, float) line2 = EquationOfLineFromTwoPoints(point2, point3);
-            //get perpendicular slope
-            float slopePerpLine1 = float.IsFinite(line1.Item1) ? -1f / line1.Item1 : 0;
-            float slopePerpLine2 = float.IsFinite(line2.Item1) ? -1f / line2.Item1 : 0;
-            //get the midpoint of the chord, the line formed by this point and the perpendicular slope passes through the center of the circle
-            Vector3 midway1And2 = Vector3.Lerp(point1, point2, 0.5f);
-            Vector3 midway2And3 = Vector3.Lerp(point2, point3, 0.5f);
-            //find the point where the chord perpendicular bisectors intersect, that is our circle center.
-            if (LineLineIntersection(out Vector3 intersection, midway1And2, slopePerpLine1, midway2And3, slopePerpLine2))
-            {
-                center = intersection;
-                return true;
-            }
-            //Debug.LogError($"Error with chord bisection algorithm => Point1: {point1} | Point2: {point2} | Point3: {point3}");
-            return false;
-        }
-
         public static bool CenterOfCircleOfThreePoints(out VectorDouble center, VectorDouble point1, VectorDouble point2, VectorDouble point3)
         {
             center = point1;
@@ -447,12 +337,15 @@ namespace ClothoidX
             (double, double) line1 = EquationOfLineFromTwoPoints(point1, point2);
             //chord of point2 and 3
             (double, double) line2 = EquationOfLineFromTwoPoints(point2, point3);
+            //Console.WriteLine($"Slope1: {line1.Item1} | Slope2: {line2.Item1} | Int1: {line1.Item2} | Int2: {line2.Item2}");
             //get perpendicular slope
             double slopePerpLine1 = double.IsFinite(line1.Item1) ? -1d / line1.Item1 : 0;
             double slopePerpLine2 = double.IsFinite(line2.Item1) ? -1d / line2.Item1 : 0;
+            //Console.WriteLine($"SlopePerp1: {slopePerpLine1} | SlopePerp2: {slopePerpLine2}");
             //get the midpoint of the chord, the line formed by this point and the perpendicular slope passes through the center of the circle
-            VectorDouble midway1And2 = VectorDouble.Lerp(point1, point2, 0.5);
-            VectorDouble midway2And3 = VectorDouble.Lerp(point2, point3, 0.5);
+            VectorDouble midway1And2 = VectorDouble.Lerp(point1, point2, 0.5d);
+            VectorDouble midway2And3 = VectorDouble.Lerp(point2, point3, 0.5d);
+            //Console.WriteLine($"Midway1And2: {midway1And2} | Midway2And3: {midway2And3}");
             //find the point where the chord perpendicular bisectors intersect, that is our circle center.
             if (LineLineIntersection(out VectorDouble intersection, midway1And2, slopePerpLine1, midway2And3, slopePerpLine2))
             {
@@ -472,6 +365,7 @@ namespace ClothoidX
         /// <param name="point2"></param>
         /// <param name="slope2"></param>
         /// <returns></returns>
+        /*
         public static bool LineLineIntersection(out Vector3 intersection, Vector3 point1, float slope1, Vector3 point2, float slope2)
         {
             intersection = Vector3.Zero;
@@ -525,20 +419,16 @@ namespace ClothoidX
                 yValue = (slope1 * xValue) + int1; //y = mx + b
             }
 
-            /*if (float.IsNaN(xValue) || float.IsNaN(yValue))
-            {
-                Debug.Log($"Error nan value: intercept 1: {int1} | intercept 2: {int2} | slope 1: {slope1} | slope 2: {slope2} | point 1: {point1} | point 2: {point2}");
-            }*/
-
             intersection = new Vector3(xValue, 0, yValue);
 
             return true;
-        }
+        }*/
 
         public static bool LineLineIntersection(out VectorDouble intersection, VectorDouble point1, double slope1, VectorDouble point2, double slope2)
         {
+            //Console.WriteLine($"Point1: {point1} | Slope1: {slope1} | Point2: {point2} | Slope2: {slope2}");
             intersection = VectorDouble.Zero;
-            if (Math.Abs(slope1) == Math.Abs(slope2)) return false;
+            if (slope1 == slope2) return false;
 
             double int1 = InterceptFromPointAndSlope(point1, slope1);
             double int2 = InterceptFromPointAndSlope(point2, slope2); //y = mx + b => m1x + b1 = m2x + b2 at intersection so x = (b2 - b1) / (m1 - m2)
@@ -578,7 +468,7 @@ namespace ClothoidX
                 }
                 else
                 {
-                    //Debug.LogError($"Slope1: {slope1} | Slope2: {slope2} | Intercept1: {int1} | Intercept2: {int2}");
+                    //Console.WriteLine($"Slope1: {slope1} | Slope2: {slope2} | Intercept1: {int1} | Intercept2: {int2}");
                     return false;
                 } //different horizontal lines
             }
@@ -588,112 +478,18 @@ namespace ClothoidX
                 yValue = (slope1 * xValue) + int1; //y = mx + b
             }
 
-            /*if (float.IsNaN(xValue) || float.IsNaN(yValue))
-            {
-                Debug.Log($"Error nan value: intercept 1: {int1} | intercept 2: {int2} | slope 1: {slope1} | slope 2: {slope2} | point 1: {point1} | point 2: {point2}");
-            }*/
-
             intersection = new VectorDouble(xValue, 0, yValue);
 
             return true;
         }
 
-        public static bool LineCircleIntersection(out List<Vector3> intersections, Vector3 point, float slope, float circleRadius, Vector3 circleCenter)
-        {
-            intersections = new List<Vector3>();
-            double zIntercept = InterceptFromPointAndSlope(point, slope);
-            double discriminant;
-            double a;
-            double b;
-            double c;
-            double x;
-            double y;
-            if (!double.IsFinite(slope))
-            {
-                //handle case where line is vertical line x = k
-                a = 1;
-                b = -2 * circleCenter.Z;
-                c = (circleCenter.X * circleCenter.X) + (circleCenter.Z * circleCenter.Z) - (circleRadius * circleRadius) - (2 * zIntercept * circleCenter.X) + (zIntercept * zIntercept);
-
-                discriminant = (b * b) - (4 * a * c);
-
-                if (discriminant < 0)
-                {
-                    return false;
-                }
-                else if (discriminant > 0)
-                {
-                    y = (-b + Math.Sqrt(discriminant)) / (2 * a);
-                    intersections.Add(new Vector3((float)zIntercept, 0, (float)y));
-                    y = (-b - Math.Sqrt(discriminant)) / (2 * a);
-                    intersections.Add(new Vector3((float)zIntercept, 0, (float)y));
-                    return true;
-                }
-                else
-                {
-                    y = -b / (2 * a);
-                    intersections.Add(new Vector3((float)zIntercept, 0, (float)y));
-                    return true;
-                }
-
-            }
-            else
-            {
-                a = (slope * slope) + 1;
-                b = 2 * ((slope * zIntercept) - (slope * circleCenter.Z) - circleCenter.X);
-                c = (circleCenter.Z * circleCenter.Z) - (circleRadius * circleRadius) + (circleCenter.X * circleCenter.X) - (2 * zIntercept * circleCenter.Z) + (zIntercept * zIntercept);
-
-                discriminant = (b * b) - (4 * a * c);
-
-                if (discriminant < 0)
-                {
-                    //imaginary solutions 
-                    return false;
-                }
-                else if (discriminant > 0)
-                {
-                    //2 solutions
-                    x = (-b + Math.Sqrt(discriminant)) / (2 * a);
-                    intersections.Add(new Vector3((float)x, 0, (float)((slope * x) + zIntercept)));
-                    x = (-b - Math.Sqrt(discriminant)) / (2 * a);
-                    intersections.Add(new Vector3((float)x, 0, (float)((slope * x) + zIntercept)));
-                    return true;
-                }
-                else
-                {
-                    //1 solution
-                    x = -b / (2 * a);
-                    intersections.Add(new Vector3((float)x, 0, (float)((slope * x) + zIntercept)));
-                    return true;
-                }
-            }
-        }
-
         /// <summary>
-        /// Returns a pair of floats (x, z) where the x value is the slope and the z value is the z intercept of the line passing through the two points given.
+        /// Returns a pair of doubles (x, z) where the x value is the slope and the z value is the z intercept of the line passing through the two points given.
         /// If the slope is infinite, the second value will be the x intercept.
         /// </summary>
         /// <param name="point1"></param>
         /// <param name="point2"></param>
         /// <returns></returns>
-        public static (float, float) EquationOfLineFromTwoPoints(Vector3 point1, Vector3 point2)
-        {
-            float diffZ = point2.Z - point1.Z;
-            float diffX = point2.X - point1.X;
-            float slope;
-
-            if (diffX == 0)
-            {
-                slope = float.PositiveInfinity;
-            }
-            else
-            {
-                slope = diffZ / diffX;
-            }
-
-            return (slope, InterceptFromPointAndSlope(point1, slope));
-        }
-
         public static (double, double) EquationOfLineFromTwoPoints(VectorDouble point1, VectorDouble point2)
         {
             double diffZ = point2.Z - point1.Z;
@@ -717,12 +513,6 @@ namespace ClothoidX
         /// <param name="point"></param>
         /// <param name="slope"></param>
         /// <returns></returns>
-        public static float InterceptFromPointAndSlope(Vector3 point, float slope)
-        {
-            if (!float.IsFinite(slope)) return point.X;
-            return point.Z - (slope * point.X); // b = y - mx
-        }
-
         public static double InterceptFromPointAndSlope(VectorDouble point, double slope)
         {
             if (!double.IsFinite(slope)) return point.X;
@@ -731,43 +521,6 @@ namespace ClothoidX
 
         internal class SVDJacobiProgram
         {
-            public static void Test()
-            {
-                //Console.WriteLine("\nBegin SVD decomp via Jacobi algorithm using C#");
-
-                double[][] A = new double[4][];
-                A[0] = new double[] { 1, 2, 3 };
-                A[1] = new double[] { 5, 0, 2 };
-                A[2] = new double[] { 8, 5, 4 };
-                A[3] = new double[] { 6, 9, 7 };
-
-                //Console.WriteLine("\nSource matrix: ");
-                MatShow(A, 1, 5);
-
-                double[][] U;
-                double[][] Vh;
-                double[] s;
-
-                //Console.WriteLine("\nPerforming SVD decomposition ");
-                SVD_Jacobi(A, out U, out Vh, out s);
-
-                //Console.WriteLine("\nResult U = ");
-                MatShow(U, 4, 9);
-                //Console.WriteLine("\nResult s = ");
-                VecShow(s, 4, 9);
-                //Console.WriteLine("\nResult Vh = ");
-                MatShow(Vh, 4, 9);
-
-                double[][] S = MatDiag(s);
-                double[][] US = MatProduct(U, S);
-                double[][] USVh = MatProduct(US, Vh);
-                //Console.WriteLine("\nU * S * Vh = ");
-                MatShow(USVh, 4, 9);
-
-                //Console.WriteLine("\nEnd demo ");
-                Console.ReadLine();
-            } // Main
-
             public static bool SVD_Jacobi(double[][] M, out double[][] U, out double[][] Vh, out double[] s)
             {
                 double DBL_EPSILON = 1.0e-15;
@@ -1043,6 +796,24 @@ namespace ClothoidX
                 return result;
             }
 
+            //Can't believe this wasn't already here.
+            public static double[][] MatAdd(double[][] matA, double[][] matB)
+            {
+                int aRows = matA.Length;
+                int aCols = matA[0].Length;
+                int bRows = matB.Length;
+                int bCols = matB[0].Length;
+                if (aRows != bRows || aCols != bCols)
+                {
+                    throw new Exception("Non-conformable matrices");
+                }
+                double[][] result = MatMake(aRows, aCols);
+                for (int i = 0; i < aRows; ++i)
+                    for (int j = 0; j < aCols; ++j)
+                        result[i][j] = matA[i][j] + matB[i][j];
+                return result;
+            }
+
             static double VecNorm(double[] vec)
             {
                 double sum = 0.0;
@@ -1135,13 +906,13 @@ namespace ClothoidX
         /// <param name="function"></param>
         /// <param name="numIntervals">The number of boxes. The higher this number is the more accurate the approximation is.</param>
         /// <returns></returns>
-        public static float IntegralApproximation(float from, float to, Func<float, float> function, int numIntervals = 20)
+        public static double IntegralApproximation(double from, double to, Func<double, double> function, int numIntervals = 20)
         {
-            float integral = 0;
-            float dx = (from - to) / numIntervals;
+            double integral = 0;
+            double dx = (from - to) / numIntervals;
             for (int i = 0; i < numIntervals; i++)
             {
-                float x = i * dx;
+                double x = i * dx;
                 integral += function(x) * dx;
             }
             return integral;
@@ -1221,17 +992,21 @@ namespace ClothoidX
         {
             return (lhs.X * rhs.Z) - (lhs.Z * rhs.X);
         }
+        public static VectorDouble ToVD(this Vector3 v)
+        {
+            return new VectorDouble(v.X, v.Y, v.Z);
+        }
 
         /// <summary>
         /// A simple 3D vector class that uses doubles for precision.
         /// </summary>
         public class VectorDouble
         {
-            public static readonly VectorDouble Zero = new VectorDouble(0, 0, 0);
-            public static readonly VectorDouble One = new VectorDouble(1, 1, 1);
-            public static readonly VectorDouble UnitY = new VectorDouble(0, 1, 0);
-            public static readonly VectorDouble UnitX = new VectorDouble(1, 0, 0);
-            public static readonly VectorDouble UnitZ = new VectorDouble(0, 0, 1);
+            public static readonly VectorDouble Zero = new VectorDouble(0, 0, (double)0);
+            public static readonly VectorDouble One = new VectorDouble(1, 1, (double)1);
+            public static readonly VectorDouble UnitY = new VectorDouble(0, 1, (double)0);
+            public static readonly VectorDouble UnitX = new VectorDouble(1, 0, (double)0);
+            public static readonly VectorDouble UnitZ = new VectorDouble(0, 0, (double)1);
 
             public double X { get => _vals[0]; }
             public double Y { get => _vals[1]; }
@@ -1240,6 +1015,11 @@ namespace ClothoidX
             public VectorDouble(double X, double Y, double Z)
             {
                 _vals = new double[3] { X, Y, Z };
+            }
+
+            public VectorDouble(Vector3 vector)
+            {
+                _vals = new double[3] { vector.X, vector.Y, vector.Z };
             }
 
             public double Length
@@ -1257,7 +1037,7 @@ namespace ClothoidX
 
             public override string ToString()
             {
-                return $"<{X}, {Y}, {Z}>";
+                return $"<{Math.Round(X, 6)}, {Math.Round(Y, 6)}, {Math.Round(Z, 6)}>";
             }
 
             public double this[int index]
@@ -1276,6 +1056,13 @@ namespace ClothoidX
                 double sinTheta = Math.Sin(angle);
                 double dot = Dot(v, axis);
                 return v * cosTheta + (Cross(axis, v) * sinTheta) + (axis * dot * (1 - cosTheta));
+            }
+
+            public static VectorDouble Normalize(VectorDouble v)
+            {
+                double length = v.Length;
+                if (length == 0) throw new DivideByZeroException("Cannot normalize a zero vector.");
+                return v / length;
             }
 
             public static VectorDouble operator +(VectorDouble a, VectorDouble b)
@@ -1343,11 +1130,186 @@ namespace ClothoidX
             {
                 return v.ToV3();
             }
+
         }
 
-        public static VectorDouble ToVD(this Vector3 v)
+        public static List<Vector3> SampleTangentVector(Vector3 start, Vector3 tangent, int numSamples)
         {
-            return new VectorDouble(v.X, v.Y, v.Z);
+            // Samples a tangent vector from a start point in the direction of the tangent vector.
+            // Returns a list of Vector3 points sampled along the tangent vector.
+            List<Vector3> samples = new List<Vector3>();
+            float t;
+            for (int i = 0; i < numSamples; i++)
+            {
+                t = (float)i / (numSamples - 1);
+                samples.Add(start + (tangent * t));
+            }
+            return samples;
         }
+
+        public static List<Vector3> SampleTangentAngleVector(Vector3 start, double angle, double length, int numSamples)
+        {
+            Vector3 tangent = new Vector3((float)Math.Round(Math.Cos(angle), 4), 0, (float)Math.Round(Math.Sin(angle), 4)) * (float)length;
+            //Console.WriteLine($"SampleTangentAngleVector: Start: {start}, Tangent: {tangent}, NumSamples: {numSamples}");
+            return SampleTangentVector(start, tangent, numSamples);
+        }
+
+        /// <summary>
+        /// Get a 2D rotation matrix for the given angle in radians.
+        /// </summary>
+        /// <param name="angle"></param>
+        /// <returns></returns>
+        public static double[][] RotationMatrix(double angle)
+        {
+            double cosA = Math.Cos(angle);
+            double sinA = Math.Sin(angle);
+            return new double[][]
+            {
+                new double[] { cosA, -sinA },
+                new double[] { sinA, cosA }
+            };
+        }
+
+        public sealed class Solver2x2
+        {
+            // --- Public state you might want to inspect ---
+            public bool IsFactored { get; private set; }
+            public bool IsSingular { get; private set; }    // true if second pivot is tiny (near singular)
+            public int[] RowPerm { get; } = new int[2];     // encodes row permutation (P)
+            public int[] ColPerm { get; } = new int[2];     // encodes column permutation (Q)
+
+            // Combined LU storage (jagged 2x2): below-diagonal = L multipliers; diagonal+upper = U.
+            private readonly double[][] LU =
+            {
+            new double[2],
+            new double[2]
+        };
+
+            private readonly double _eps; // tolerance for tiny pivots
+
+            public Solver2x2(double epsilon = 1e-12)
+            {
+                _eps = epsilon;
+                Reset();
+            }
+
+            /// <summary>
+            /// Reset flags and permutations.
+            /// </summary>
+            public void Reset()
+            {
+                IsFactored = false;
+                IsSingular = false;
+                RowPerm[0] = 0; RowPerm[1] = 1;
+                ColPerm[0] = 0; ColPerm[1] = 1;
+                LU[0][0] = LU[0][1] = LU[1][0] = LU[1][1] = 0.0;
+            }
+
+            /// <summary>
+            /// Factorize a 2x2 matrix A with FULL pivoting.
+            /// On success: stores LU, row/col permutations, and returns true.
+            /// On failure (zero/tiny pivot): returns false.
+            /// A is a jagged array: new[] { new double[2], new double[2] }.
+            /// </summary>
+            public bool Factorize(double[][] A)
+            {
+                if (!IsValid2x2(A)) throw new ArgumentException("A must be a 2x2 jagged array.");
+
+                // --- 1) Choose the best first pivot via FULL pivoting (max abs entry) ---
+                // Positions: (0,0)->idx0, (0,1)->idx1, (1,0)->idx2, (1,1)->idx3
+                int bestIdx = 0;
+                double bestVal = Math.Abs(A[0][0]);
+
+                double v01 = Math.Abs(A[0][1]); if (v01 > bestVal) { bestVal = v01; bestIdx = 1; }
+                double v10 = Math.Abs(A[1][0]); if (v10 > bestVal) { bestVal = v10; bestIdx = 2; }
+                double v11 = Math.Abs(A[1][1]); if (v11 > bestVal) { bestVal = v11; bestIdx = 3; }
+
+                // If all entries are (near) zero -> not factorizable
+                if (bestVal <= _eps) return false;
+
+                // Decode bestIdx into row/col permutations
+                // Rows: use bit 1 (2's place); Cols: use bit 0 (1's place)
+                // idx: 0=(0,0), 1=(0,1), 2=(1,0), 3=(1,1)
+                ColPerm[0] = (bestIdx & 0x01) == 1 ? 1 : 0; // if odd -> col 1 is new col 0
+                ColPerm[1] = 1 - ColPerm[0];
+
+                RowPerm[0] = (bestIdx & 0x02) == 2 ? 1 : 0; // if >=2 -> row 1 is new row 0
+                RowPerm[1] = 1 - RowPerm[0];
+
+                // --- 2) Copy the permuted A into LU (i.e., LU = P*A*Q) ---
+                LU[0][0] = A[RowPerm[0]][ColPerm[0]];
+                LU[0][1] = A[RowPerm[0]][ColPerm[1]];
+                LU[1][0] = A[RowPerm[1]][ColPerm[0]];
+                LU[1][1] = A[RowPerm[1]][ColPerm[1]];
+
+                // --- 3) Check first pivot (u00) ---
+                double u00 = LU[0][0];
+                if (Math.Abs(u00) <= _eps) return false; // should not happen if we picked max, but be safe
+
+                // --- 4) Eliminate: store L(1,0) in LU[1][0], then update U(1,1) in LU[1][1] ---
+                LU[1][0] /= u00;                 // l10
+                LU[1][1] -= LU[1][0] * LU[0][1]; // u11 = u11 - l10*u01
+
+                // --- 5) Check second pivot (u11). If tiny => near singular (but we still "factored"). ---
+                IsSingular = Math.Abs(LU[1][1]) <= _eps;
+
+                IsFactored = true;
+                return true; // Factorization succeeded (even if near-singular)
+            }
+
+            /// <summary>
+            /// Solve A * x = b using the previously computed factorization.
+            /// Returns false if not factored or singular; true on success.
+            /// </summary>
+            public bool Solve(double[] b, double[] x)
+            {
+                if (!IsFactored) return false;
+                if (b == null || b.Length != 2) throw new ArgumentException("b must be length 2.");
+                if (x == null || x.Length != 2) throw new ArgumentException("x must be length 2.");
+                if (IsSingular) return false; // if you want, you could still try a least-squares-ish solve
+
+                // Apply row permutation to RHS: b' = P * b
+                double b0 = b[RowPerm[0]];
+                double b1 = b[RowPerm[1]];
+
+                // Forward solve: L * y = b'
+                // L = [1 0; l10 1], stored as LU[1][0] = l10
+                double y0 = b0;
+                double y1 = b1 - LU[1][0] * y0;
+
+                // Back substitution: U * z = y
+                // U = [u00 u01; 0 u11], stored as LU[0][0], LU[0][1], LU[1][1]
+                double u00 = LU[0][0];
+                double u01 = LU[0][1];
+                double u11 = LU[1][1];
+
+                double z1 = y1 / u11;
+                double z0 = (y0 - u01 * z1) / u00;
+
+                // Undo column permutation on the solution: x = Q * z
+                x[ColPerm[0]] = z0;
+                x[ColPerm[1]] = z1;
+
+                return true;
+            }
+
+            /// <summary>
+            /// Convenience: Try to solve A x = b in one call.
+            /// Returns true and sets 'x' if successful; otherwise returns false.
+            /// </summary>
+            public static bool TrySolve(double[][] A, double[] b, out double[] x, double epsilon = 1e-12)
+            {
+                x = new double[2];
+                var s = new Solver2x2(epsilon);
+                if (!s.Factorize(A)) return false;
+                return s.Solve(b, x);
+            }
+
+            // --- Helpers ---
+            private static bool IsValid2x2(double[][] M) =>
+                M != null && M.Length == 2 && M[0] != null && M[1] != null &&
+                M[0].Length == 2 && M[1].Length == 2;
+        }
+
     }
 }

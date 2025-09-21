@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace ClothoidX
 {
-    public class ClothoidSolutionBertolazziFrego
+    public static class ClothoidSolutionBertolazziFrego
     {
         /// <summary>
         /// Threshold for A to solve the fresnel equation with different solutions
@@ -19,118 +19,79 @@ namespace ClothoidX
         /// <summary>
         /// Root finding tolerance
         /// </summary>
-        private static readonly double ROOT_TOLERANCE = 1E-2;
+        private const double ROOT_TOLERANCE = 1E-4;
         /// <summary>
         /// These are coefficients used in the initial guess of A in the root finding algorithm
         /// </summary>
         private static readonly double[] CF = new double[6] { 2.989696028701907, 0.716228953608281, -0.458969738821509, -0.502821153340377, 0.261062141752652, -0.045854475238709 };
 
+        /// <summary>
+        /// Build a G1 continuous clothoid spline with posture data. 
+        /// </summary>
+        /// <param name="data"></param>
+        /// <returns></returns>
         public static ClothoidCurve G1Spline(Posture[] data)
         {
             ClothoidCurve c = new ClothoidCurve();
-
             for (int i = 0; i + 1 < data.Length; i++)
             {
-                c += G1(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
-            }
-
-            c.Offset = data[0].PositionD;
-            c.AngleOffset = data[0].Angle;
-
-            return c;
-        }
-
-        public static ClothoidCurve2 G1Spline2(Posture[] data)
-        {
-            ClothoidCurve2 c = new ClothoidCurve2();
-            for (int i = 0; i + 1 < data.Length; i++)
-            {
-                c += G1S(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
+                c += G1Segment(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
             }
             return c;
         }
-
-        public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> points)
-        {
-            return G1Spline(Posture.CalculatePostures(points).ToArray());
-        }
-
-        public static ClothoidCurve2 G1Spline2(List<Mathc.VectorDouble> points)
-        {
-            return G1Spline2(Posture.CalculatePostures(points).ToArray());
-        }
-
-        public static ClothoidCurve G1Spline(List<Vector3> points)
-        {
-            return G1Spline(Posture.CalculatePostures(points).ToArray());
-        }
-
-
 
         /// <summary>
-        /// Get a G1 clothoid curve using two points and associated tangents.
-        /// Angles should be in radians. Like all G1 and G2 solutions, this 
-        /// requires returning a ClothoidCurve object in order to leverage
-        /// the Offset and AngleOffset properties, which are required for
-        /// the endpoints to interpolate.
+        /// Build a G1 continuous clothoid spline with a list of VectorDouble points
         /// </summary>
-        /// <param name="x0">start point x</param>
-        /// <param name="z0">start point z</param>
-        /// <param name="t0">start tangent angle in radians</param>
-        /// <param name="x1">end point x</param>
-        /// <param name="z1">end point z</param>
-        /// <param name="t1">end point tangent angle in radians</param>
+        /// <param name="points"></param>
         /// <returns></returns>
-        public static ClothoidCurve G1(double x0, double z0, double t0, double x1, double z1, double t1)
+        public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> points, bool loop = false)
         {
-            double dx = x1 - x0;
-            double dz = z1 - z0;
-            double phi = Math.Atan2(dz, dx);
-            double r = Math.Sqrt((dx * dx) + (dz * dz));
-            double phi0 = NormalizeAngle(t0 - phi);
-            double phi1 = NormalizeAngle(t1 - phi);
-            double e = 1E-4;
-
-            if ((Math.Abs(phi0) < e && Math.Abs(phi1) == 0) || (phi0 + Math.PI < e && phi1 - Math.PI < e) || (phi0 - Math.PI < e && phi1 + Math.PI < e))
-            {
-                return new ClothoidCurve().AddLine(r);
-            }
-
-            double d = phi1 - phi0;
-
-            //Calculate the bounds of the solution A_max and T_max
-            //double Tmax = Math.Max(0, PI_2 + (Math.Sign(phi1) * phi0));
-            //double Amax = Tmax == 0 ? absd : absd + (2 * Tmax * (1 + Math.Sqrt(1 + (absd / Tmax))));
-
-            double g;
-            double dg;
-            List<double[]> IntCS;
-            int u = 0;
-            double A = InitialGuessA(phi0, phi1);
-
-            do
-            {
-                IntCS = GeneralizedFresnelCS(3, 2 * A, d - A, phi0);
-                g = IntCS[1][0];
-                dg = IntCS[0][2] - IntCS[0][1];
-                A -= g / dg;
-            } while (++u < 30 && Math.Abs(g) > ROOT_TOLERANCE);
-
-            double[] intCS;
-
-            intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
-            double s = r / intCS[0];
-
-            double startCurvature = (d - A) / s;
-            double sharpness = 2 * A / (s * s);
-
-            ClothoidCurve c = ClothoidCurve.FromSegments(new ClothoidSegment(startCurvature, sharpness, s));
-            c.Offset = new Mathc.VectorDouble(x0, 0, z0);
-            c.AngleOffset = t0;
-            return c;
+            return G1Spline(Posture.CalculatePostures(points, loop).ToArray());
         }
 
-        public static ClothoidSegment2 G1S(double x0, double z0, double t0, double x1, double z1, double t1)
+        /// <summary>
+        /// Build a G1 clothoid spline given a list of Vector3 points. 
+        /// </summary>
+        /// <param name="points"></param>
+        /// <param name="loop"></param>
+        /// <returns></returns>
+        public static ClothoidCurve G1Spline(List<Vector3> points, bool loop = false)
+        {
+            return G1Spline(Posture.CalculatePostures(points, loop).ToArray());
+        }
+        
+        /// <summary>
+        /// Build a G2 segment from the given parameters. Note this isn't finished yet which is why it is private.
+        /// </summary>
+        /// <param name="x0"></param>
+        /// <param name="z0"></param>
+        /// <param name="v0"></param>
+        /// <param name="k0"></param>
+        /// <param name="x1"></param>
+        /// <param name="z1"></param>
+        /// <param name="v1"></param>
+        /// <param name="k1"></param>
+        /// <returns></returns>
+        public static ClothoidCurve G2Segment(double x0, double z0, double v0, double k0, double x1, double z1, double v1, double k1)
+        {
+            throw new NotImplementedException();
+            return ClothoidG2Solver3Arc.Build(x0, z0, v0, k0, x1, z1, v1, k1);
+        }
+
+        /// <summary>
+        /// Build a G1 clothoid segment given two points and two angles.
+        /// </summary>
+        /// <param name="x0"></param>
+        /// <param name="z0"></param>
+        /// <param name="t0"></param>
+        /// <param name="x1"></param>
+        /// <param name="z1"></param>
+        /// <param name="t1"></param>
+        /// <param name="tol"></param>
+        /// <param name="maxIter"></param>
+        /// <returns></returns>
+        public static ClothoidSegment G1Segment(double x0, double z0, double t0, double x1, double z1, double t1, double tol = ROOT_TOLERANCE, int maxIter = 30)
         {
             double dx = x1 - x0;
             double dz = z1 - z0;
@@ -138,18 +99,18 @@ namespace ClothoidX
             double r = Math.Sqrt((dx * dx) + (dz * dz));
             double phi0 = NormalizeAngle(t0 - phi);
             double phi1 = NormalizeAngle(t1 - phi);
-            double e = 1E-4;
 
-            if ((Math.Abs(phi0) < e && Math.Abs(phi1) == 0) || (phi0 + Math.PI < e && phi1 - Math.PI < e) || (phi0 - Math.PI < e && phi1 + Math.PI < e))
+            if ((Math.Abs(phi0) < tol && Math.Abs(phi1) == 0) || (phi0 + Math.PI < tol && phi1 - Math.PI < tol) || (phi0 - Math.PI < tol && phi1 + Math.PI < tol))
             {
-                return new ClothoidSegment2(new Mathc.VectorDouble(x0, 0, z0), t0, 0, 0, r);
+                return new ClothoidSegment(new Mathc.VectorDouble(x0, 0, z0), t0, 0, 0, r, SolutionType.BERTOLAZZIFREGO);
             }
 
             double d = phi1 - phi0;
 
             //Calculate the bounds of the solution A_max and T_max
-            //double Tmax = Math.Max(0, PI_2 + (Math.Sign(phi1) * phi0));
-            //double Amax = Tmax == 0 ? absd : absd + (2 * Tmax * (1 + Math.Sqrt(1 + (absd / Tmax))));
+            double absd = Math.Abs(d);
+            double Tmax = Math.Max(0, (Math.PI / 2) + (Math.Sign(phi1) * phi0));
+            double Amax = Tmax == 0 ? absd : absd + (2 * Tmax * (1 + Math.Sqrt(1 + (absd / Tmax))));
 
             double g;
             double dg;
@@ -157,18 +118,46 @@ namespace ClothoidX
             int u = 0;
             double A = InitialGuessA(phi0, phi1);
 
+            //print amax
+            //Console.WriteLine($"{-Amax} <= {A} <= {Amax}");
+            if (A > Amax || A < -Amax)
+            {
+                //print amax
+                //Console.WriteLine($"{-Amax} <= {A} <= {Amax}\n");
+                A = 0;
+            }
+
+            double change;
+            double prevChange = double.MaxValue;
+
             do
             {
                 IntCS = GeneralizedFresnelCS(3, 2 * A, d - A, phi0);
                 g = IntCS[1][0];
                 dg = IntCS[0][2] - IntCS[0][1];
-                A -= g / dg;
-            } while (++u < 30 && Math.Abs(g) > ROOT_TOLERANCE);
+                change = g / dg;
 
-            double[] intCS;
+                //When the change is larger than the previous change, we are probably oscillating around the root, so cut the change in half
+                //I noticed this happening when the initial guess was very close to the actual root. 
+                if (Math.Abs(change) >= Math.Abs(prevChange))
+                {
+                    change = Math.Abs(prevChange) * Math.Sign(change) / 2;
+                }
+                prevChange = change;
 
-            intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
-            double s = r / intCS[0];
+                if (Math.Abs(g) > tol) A -= change;
+                else break;
+                //Console.WriteLine($"g: {g}, dg: {dg}, A: {A}, u: {u}");
+            } while (++u < maxIter && Math.Abs(g) > tol);
+
+            //print all parameters and final values
+            //Console.WriteLine($"A: {A}, g: {g}, dg: {dg}, u: {u}, phi0: {phi0}, phi1: {phi1}, d: {d}, r: {r}");
+
+
+            //double[] intCS;
+
+            //intCS = GeneralizedFresnelCS(2 * A, d - A, phi0);
+            double s = r / IntCS[0][0];//intCS[0];
 
             double startCurvature = (d - A) / s;
             double sharpness = 2 * A / (s * s);
@@ -176,7 +165,7 @@ namespace ClothoidX
             /*ClothoidCurve c = ClothoidCurve.FromSegments(new ClothoidSegment(startCurvature, sharpness, s));
             c.Offset = new Mathc.VectorDouble(x0, 0, z0);
             c.AngleOffset = t0;*/
-            ClothoidSegment2 s2 = new ClothoidSegment2(new Mathc.VectorDouble(x0, 0, z0), t0, startCurvature, sharpness, s);
+            ClothoidSegment s2 = new ClothoidSegment(new Mathc.VectorDouble(x0, 0, z0), t0, startCurvature, sharpness, s, SolutionType.BERTOLAZZIFREGO);
             return s2;
         }
 
@@ -192,6 +181,24 @@ namespace ClothoidX
             return angle;
         }
 
+        /// <summary>
+        /// Normalize an angle in radians to be between 0 and 2pi.
+        /// </summary>
+        /// <param name="angle"></param>
+        /// <returns></returns>
+        private static double NormalizeAngle2(double angle)
+        {
+            while (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+            while (angle < 0) angle += 2 * Math.PI;
+            return angle;
+        }
+
+        /// <summary>
+        /// Guess the initial value of A given the two values of phi. Phi is the angle difference between the tangent and the vector from start to end. 
+        /// </summary>
+        /// <param name="phi0"></param>
+        /// <param name="phi1"></param>
+        /// <returns></returns>
         private static double InitialGuessA(double phi0, double phi1)
         {
             double X = phi0 / Math.PI;
@@ -199,14 +206,37 @@ namespace ClothoidX
             double xy = X * Y;
             X *= X;
             Y *= Y;
-            //double c1 = 3.070645;
-            //double c2 = 0.947923;
-            //double c3 = -0.673029;
-            //return (phi0 + phi1) * (3.070645 + (0.947923 * X * Y) + (-0.673029 * ((X * X) + (Y * Y))));
             return (phi0 + phi1) * (CF[0] + xy * (CF[1] + xy * CF[2]) + (CF[3] + xy * CF[4]) * (X + Y) + CF[5] * (X * X + Y * Y));
         }
 
-        public static double RLommel(double mu, double v, double b)
+        /// <summary>
+        /// Get the initial guess for A and the bounds for the smallest A root.
+        /// </summary>
+        /// <param name="start"></param>
+        /// <param name="end"></param>
+        /// <param name="startAngle"></param>
+        /// <param name="endAngle"></param>
+        /// <param name="A"></param>
+        /// <param name="Amax"></param>
+        /// <returns></returns>
+        public static void PInitialGuessA(Mathc.VectorDouble start, Mathc.VectorDouble end, double startAngle, double endAngle, out double A, out double Amax, out double d, out double phi0, out double phi1, out double r)
+        {
+            double dx = end.X - start.X;
+            double dz = end.Z - start.Z;
+            double phi = Math.Atan2(dz, dx);
+            r = Math.Sqrt((dx * dx) + (dz * dz));
+            phi0 = NormalizeAngle(startAngle - phi);
+            phi1 = NormalizeAngle(endAngle - phi);
+            A = InitialGuessA(phi0, phi1);
+
+            d = phi1 - phi0;
+
+            double absd = Math.Abs(phi1 - phi0);
+            double Tmax = Math.Max(0, (Math.PI / 2) + (Math.Sign(phi1) * phi0));
+            Amax = Tmax == 0 ? absd : absd + (2 * Tmax * (1 + Math.Sqrt(1 + (absd / Tmax))));
+        }
+
+        private static double RLommel(double mu, double v, double b)
         {
 
             double t = 1 / ((mu + v + 1) * (mu - v + 1));
@@ -278,60 +308,13 @@ namespace ClothoidX
                 {
                     rLb = RLommel(i + 1.5, 0.5, b);
                     rLc = RLommel(i + 1.5, 1.5, b);
-                    //UnityEngine.Debug.LogWarning($"i, m, k: {i}, {m}, {k}");
                     X[i] = ((i * A * rLa) + (B * rLb) + cb) / (1 + i);
                     Y[i] = (((C * rLc) + sb) / (2 + i)) + (D * rLd);
                     rLa = rLc;
                     rLd = rLb;
-                    //
                 }
 
             }
-
-            return new List<double[]>() { X, Y };
-        }
-
-        private static List<double[]> EvalXYaSmall2(int k, double a, double b, int p)
-        {
-            if (a == 0) return EvalXYaZero(b, k);
-
-            List<double[]> XY = EvalXYaZero(b, k + (4 * p) + 2);
-            double[] X0 = XY[0];
-            double[] Y0 = XY[1];
-            double[] X = new double[3];
-            double[] Y = new double[3];
-
-            double term1;
-            double term2;
-            double term3;
-            double z, zz, zzz;
-            int n;
-            int nk = 0;
-            do
-            {
-                X[nk] = 0;
-                Y[nk] = 0;
-                for (n = 0; n <= p; n++)
-                {
-                    z = Math.Pow(a / 2, 2 * n);
-                    zz = Math.Pow(-1, n);
-                    zzz = Mathc.Fact(2 * n);
-                    term1 = z * zz / zzz;
-                    //term1 = Math.Pow(a / 2, 2 * n) * Math.Pow(-1, n) / Mathc.Fact(2 * n);
-                    term2 = X0[(4 * n) + k] - (a * Y0[(4 * n) + k + 2] / (2 * ((2 * n) + 1)));
-                    term3 = Y0[(4 * n) + k] - (a * X0[(4 * n) + k + 2] / (2 * ((2 * n) + 1)));
-                    //UnityEngine.Debug.LogWarning($"{z} | {zz} | {zzz}");
-
-                    if (!double.IsNormal(term1) || !double.IsNormal(term2) || !double.IsNormal(term3))
-                    {
-                        //UnityEngine.Debug.Log($"n: {n} | term1: {term1} | term2: {term2} | term3: {term3}");
-                        //UnityEngine.Debug.Log($"k: {k} | a: {a} | b: {b} | p: {p}");
-                    }
-
-                    X[nk] += term1 * term2;
-                    Y[nk] += term1 * term3;
-                }
-            } while (++nk < k);
 
             return new List<double[]>() { X, Y };
         }
@@ -372,13 +355,7 @@ namespace ClothoidX
             return new List<double[]>() { X, Y };
         }
 
-        private static double[] EvalXYaLarge(double a, double b)
-        {
-            List<double[]> XY = EvalXYaLarge(0, a, b);
-            return new double[2] { XY[0][0], XY[1][0] };
-        }
-
-        public static List<double[]> EvalXYaLarge(int n, double a, double b)
+        private static List<double[]> EvalXYaLarge(int n, double a, double b)
         {
             if (n > 3 || n < 0) throw new ArgumentOutOfRangeException();
 
@@ -436,75 +413,6 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// More closely resembles the paper's mathematical description.
-        /// </summary>
-        /// <param name="n"></param>
-        /// <param name="a"></param>
-        /// <param name="b"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        public static List<double[]> EvalXYaLarge2(int n, double a, double b)
-        {
-            if (n > 3 || n < 0) throw new ArgumentOutOfRangeException();
-
-            if (double.IsNaN(a)) Console.WriteLine($"a is NaN: {a}");//UnityEngine.Debug.LogWarning($"a is NaN: {a}");
-
-            double[] X = new double[3];
-            double[] Y = new double[3];
-
-            double s = a > 0 ? 1 : -1;
-            double absa = Math.Abs(a);
-            double z = s * Math.Sqrt(absa / Math.PI);
-            double wm = b / Math.Sqrt(Math.PI * absa);
-            double wp = wm + z;
-            double t = -b * b / (2 * a);
-            double cz = Math.Cos(t) / z;
-            double sz = Math.Sin(t) / z;
-
-            List<double[]> CSp = FresnelCS(3, wp);
-            List<double[]> CSm = FresnelCS(3, wm);
-
-            double dC0 = CSp[0][0] - CSm[0][0];
-            double dS0 = CSp[1][0] - CSm[1][0];
-
-            X[0] = cz * dC0 - (s * sz * dS0);
-            Y[0] = sz * dC0 + (s * cz * dS0);
-
-            if (n > 1)
-            {
-                cz /= z;
-                sz /= z;
-                dC0 *= -wm;
-                dS0 *= -wm;
-
-                double dC1 = CSp[0][1] - CSm[0][1];
-                double dS1 = CSp[1][1] - CSm[1][1];
-
-                X[1] = cz * (dC0 + dC1) - (s * sz * (dS0 + dS1));
-                Y[1] = sz * (dC0 + dC1) + (s * cz * (dS0 + dS1));
-
-                if (n > 2)
-                {
-                    cz /= z;
-                    sz /= z;
-                    dC0 *= -wm;
-                    dS0 *= -wm;
-                    dC1 *= -2 * wm;
-                    dS1 *= -2 * wm;
-
-                    double dC2 = CSp[0][2] - CSm[0][2];
-                    double dS2 = CSp[1][1] - CSm[1][1];
-
-                    X[2] = cz * (dC0 + dC1 + dC2) - (s * sz * (dS0 + dS1 + dS2));
-                    Y[2] = sz * (dC0 + dC1 + dC2) + (s * cz * (dS0 + dS1 + dS2));
-                }
-            }
-
-            return new List<double[]> { X, Y };
-
-        }
-
-        /// <summary>
         /// Evaluate the fresnel integral and its momentae at arc length t
         /// </summary>
         /// <param name="n"></param>
@@ -549,7 +457,6 @@ namespace ClothoidX
         /// <exception cref="ArgumentOutOfRangeException"></exception>
         private static List<double[]> GeneralizedFresnelCS(int n, double a, double b, double c)
         {
-            //UnityEngine.Debug.Log($"nk: {nk}, a: {a}, b: {b}, c: {c}");
             if (n < 1 || n > 3) throw new ArgumentOutOfRangeException($"Value of index: {n} | Expected value between 1 and 3 inclusive.");
             double cc = Math.Cos(c);
             double sc = Math.Sin(c);
@@ -557,12 +464,10 @@ namespace ClothoidX
 
             if (Math.Abs(a) < A_THRESHOLD)
             {
-                //UnityEngine.Debug.Log("A < THRESHOLD");
                 CS = EvalXYaSmall(n, a, b, A_SMALL_SERIES_SIZE);
             }
             else
             {
-                //UnityEngine.Debug.Log("A >= THRESHOLD");
                 CS = EvalXYaLarge(n, a, b);
             }
 
@@ -580,11 +485,43 @@ namespace ClothoidX
             return CS;
         }
 
+        /// <summary>
+        /// Investigate the GFC solution with different A values. This can be utilized for more artistic functions.
+        /// How it works is given a value A between -Amax and Amax given by <seealso cref="PInitialGuessA(Mathc.VectorDouble, Mathc.VectorDouble, double, double, out double, out double, out double, out double, out double, out double)"/>,
+        /// This function will generate a segment at the start position, with the start and end angles, but the the end position will lie on a line
+        /// perpendicular to the vector from start to end. The end position of the final segment will only match the input end parameter if A is the 
+        /// true solution to the Fresnel integral.
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="A"></param>
+        /// <param name="d"></param>
+        /// <param name="phi0"></param>
+        /// <param name="start"></param>
+        /// <param name="end"></param>
+        /// <param name="startAngle"></param>
+        /// <returns></returns>
+        public static ClothoidSegment PGeneralizedFresnelCS(double A, double startAngle, double endAngle, Mathc.VectorDouble start, Mathc.VectorDouble end)
+        {
+            double dx = end.X - start.X;
+            double dz = end.Z - start.Z;
+            double phi = Math.Atan2(dz, dx);
+            double r = Math.Sqrt((dx * dx) + (dz * dz));
+            double phi0 = NormalizeAngle(startAngle - phi);
+            double phi1 = NormalizeAngle(endAngle - phi);
+            double d = phi1 - phi0;
+            var XY = GeneralizedFresnelCS(1, 2 * A, d - A, phi0);
+            double s = r / XY[0][0];
+            double startCurvature = (d - A) / s;
+            double sharpness = 2 * A / (s * s);
+            return new ClothoidSegment(start, startAngle, startCurvature, sharpness, s, SolutionType.BERTOLAZZIFREGO);
+        }
+
         private static double[] GeneralizedFresnelCS(double a, double b, double c)
         {
             List<double[]> CS = GeneralizedFresnelCS(1, a, b, c);
             return new double[] { CS[0][0], CS[1][0] };
         }
+
 
         private static double C0(double t)
         {
@@ -596,20 +533,24 @@ namespace ClothoidX
             return Mathc.S(t);
         }
 
+
         private static double C1(double t)
         {
             return Math.Sin(Math.PI * t * t / 2) / Math.PI;
         }
+
 
         private static double S1(double t)
         {
             return (1 - Math.Cos(Math.PI * t * t / 2)) / Math.PI;
         }
 
+
         private static double C2(double t)
         {
             return ((t * Math.Sin(Math.PI * t * t / 2)) - S0(t)) / Math.PI;
         }
+
 
         private static double S2(double t)
         {
@@ -626,23 +567,342 @@ namespace ClothoidX
         /// <param name="start"></param>
         /// <param name="numSamples"></param>
         /// <returns></returns>
-        public static List<Vector3> Eval(float arcLength, float curvature, float sharpness, float startAngle, Vector3 start, int numSamples = 100)
+        public static List<Mathc.VectorDouble> Eval(double arcLength, double curvature, double sharpness, double startAngle, Mathc.VectorDouble start, int numSamples = 100)
         {
             double x0 = start.X;
             double y0 = start.Z;
-            List<Vector3> points = new List<Vector3>();
-            double[] XY;
-            double increment = arcLength / numSamples;
+            var points = new List<Mathc.VectorDouble>();
+            double increment = arcLength / (numSamples - 1);
             for (double s = 0; s < arcLength; s += increment)
             {
-                XY = GeneralizedFresnelCS(sharpness * s * s, curvature * s, startAngle);
-                points.Add(new Vector3((float)(x0 + (XY[0] * s)), 0, (float)(y0 + (XY[1] * s))));
+                points.Add(EvalArcLength(s, curvature, sharpness, startAngle, start));
             }
             //add final point
-            XY = GeneralizedFresnelCS(sharpness * arcLength * arcLength, curvature * arcLength, startAngle);
-            points.Add(new Vector3((float)(x0 + (XY[0] * arcLength)), 0, (float)(y0 + (XY[1] * arcLength))));
-
+            points.Add(EvalArcLength(arcLength, curvature, sharpness, startAngle, start));
             return points;
+        }
+
+        public static Mathc.VectorDouble EvalArcLength(double arcLength, double curvature, double sharpness, double startAngle, Mathc.VectorDouble start)
+        {
+            double[] XY = GeneralizedFresnelCS(sharpness * arcLength * arcLength, curvature * arcLength, startAngle);
+            return new Mathc.VectorDouble(start.X + (XY[0] * arcLength), 0, start.Z + (XY[1] * arcLength));
+        }
+
+        //Below are functions for G2 interpolation. I keep them seperated because they are from different papers.
+
+        /// <summary>
+        /// The G2 solver includes quite a lot of parameters and functions with a bunch of shared interdependencies, so I've encapsulated it in its own class to keep things tidy.
+        /// </summary>
+        private static class ClothoidG2Solver3Arc
+        {
+            //unscaled knowns, these values will not be transformed into the new reference frame
+            /*
+            private static double x0;
+            private static double x1;
+            private static double z0;
+            private static double z1;
+            private static double v0;
+            private static double v1;
+            private static double k0;
+            private static double k1;
+
+            private static double dx;
+            private static double dz;
+            private static double d;
+            private static double lambda;
+            private static double phi;
+
+
+            //unscaled unknowns
+            private static double km;
+            private static double sm;
+            //private static double s0;
+            //private static double s1;
+            private static double kp0; //sharpness
+            private static double kp1;
+            private static double kpm;
+
+            //Scaled unknowns
+            private static double Km => km * sm;
+            private static double K0 => k0 * s0;
+            private static double K1 => k1 * s1;
+            private static double Kpm => kpm * sm * sm;
+            private static double Kp0 => kp0 * s0 * s0;
+            private static double Kp1 => kp1 * s1 * s1;
+
+            //t coefficients
+            private static double t0 => K0 + v0;
+            private static double t1 => K1 - v1;
+            private static double t2 => K0 + v0 + v0;
+            private static double t3 => K1 - v1 - v1;
+
+            //c coefficients
+            private static double c0 => s0 * s1;
+            private static double c1 => s0 + s0;
+            private static double c2 => ((((t3 - (6 * t0)) * s0) - (3 * K0 * s1))) / 4;
+            private static double c3 => -c0 * t0;
+            private static double c4 => s1 + s1;
+            private static double c5 => (((((6 * t1) - t2) * s1) + (3 * K1 * s0))) / 4;
+            private static double c6 => c0 * t1;
+            private static double c7 => -(s0 + s1) / 2;
+            private static double c8 => (t2 - t3) / 2;
+            private static double c9 => ((t2 * s1) - (t3 * s0)) / 4;
+            private static double c10 => (s1 - s0) / 2;
+            private static double c11 => -(t2 + t3) / 4;
+            private static double c12 => ((t3 * s0) + (t2 * s1)) / 4;
+            private static double c13 => c0 / 2;
+            private static double c14 => -(3 * c7) / 2;
+            */
+
+            /// <summary>
+            /// This solves the 3 arc solution. As of this comment, it is not quite functional or ready to use.
+            /// TODO: Debug this method, starting with the final output segments, it could be as simple as not 
+            /// properly transforming the parameters back.
+            /// </summary>
+            /// <param name="x0"></param>
+            /// <param name="z0"></param>
+            /// <param name="v0"></param>
+            /// <param name="k0"></param>
+            /// <param name="x1"></param>
+            /// <param name="z1"></param>
+            /// <param name="v1"></param>
+            /// <param name="k1"></param>
+            /// <returns></returns>
+            internal static ClothoidCurve Build(double x0, double z0, double v0, double k0, double x1, double z1, double v1, double k1)
+            {
+                double _x0 = x0;
+                double _x1 = x1;
+                double _z0 = z0;
+                double _z1 = z1;
+                double dx = x1 - x0;
+                double dz = z1 - z0;
+                double _k0 = k0;
+                double _k1 = k1;
+                double _v0 = v0;
+                double _v1 = v1;
+
+                double phi = Math.Atan2(dz, dx); 
+                //inverse of lambda from paper
+                double inv_lambda = 2 / Math.Sqrt((dx * dx) + (dz * dz));
+
+                double _t0 = NormalizeAngle(_v0 - phi);
+                double _t1 = NormalizeAngle(_v1 - phi);
+
+                //transformed curvature
+                double _K0 = _k0 / inv_lambda;
+                double _K1 = _k1 / inv_lambda;
+
+                double Dmax = Math.PI;
+                double dmax = Math.PI / 8;
+
+                ClothoidSegment s = G1Segment(-1, 0, _t0, 1, 0, _t1);
+
+                double ka = s.StartCurvature;
+                double kb = s.EndCurvature;
+                double dk = s.Sharpness;
+                double s_3 = s.TotalArcLength / 3;
+
+                double s0 = s_3;
+                double s1 = s_3;
+
+                //temp variable
+                double t = Math.Abs(_k0 - ka) / (2 * dmax);
+                if (t * s0 < 1) s0 = 1 / t;
+                t = (Math.Abs(_k0 + ka) + (s0 * dk)) / (2 * Dmax);
+                if (t * s0 < 1) s0 = 1 / t;
+                t = Math.Abs(_k1 - kb) / (2 * dmax);
+                if (t * s1 < 1) s1 = 1 / t;
+                t = (Math.Abs(_k1 + kb) + (s1 * dk)) / (2 * Dmax);
+                if (t * s1 < 1) s1 = 1 / t;
+
+                double frac = Math.Pow(Math.Abs(_t0 - _t1), 4) / (32 * Math.PI * Math.PI * Math.PI);
+                t = Math.Pow(Math.Cos(frac), 3);
+
+                s0 *= t;
+                s1 *= t;
+
+                double smN = (s.TotalArcLength - s0 - s1) / 2;
+                double vmN = s.Tangent(s0 + smN);
+
+                _t0 = s.AngleStart;
+                _t1 = s.AngleEnd;
+
+                _K0 *= s0;
+                _K1 *= s1;
+
+                double t0 = _K0 + _t0;
+                double t1 = _K1 - _t1;
+                double t2 = _K0 + (2 * _t0);
+                double t3 = _K1 - (2 * _t1);
+
+                double c0 = s0 * s1;
+                double c1 = s0 + s0;
+                double c2 = ((((t3 - (6 * t0)) * s0) - (3 * _K0 * s1))) / 4;
+                double c3 = -c0 * t0;
+                double c4 = s1 + s1;
+                double c5 = (((((6 * t1) - t2) * s1) + (3 * _K1 * s0))) / 4;
+                double c6 = c0 * t1;
+                double c7 = -(s0 + s1) / 2;
+                double c8 = (t2 - t3) / 2;
+                double c9 = ((t2 * s1) - (t3 * s0)) / 4;
+                double c10 = (s1 - s0) / 2;
+                double c11 = -(t2 + t3) / 4;
+                double c12 = ((t3 * s0) + (t2 * s1)) / 4;
+                double c13 = c0 / 2;
+                double c14 = -(3 * c7) / 2;
+
+                //starting guesses are smN for the arc length and vmN for the start angle of the middle arc
+                //now we solve
+
+                int u = 0;
+                int maxIter = 100;
+                bool converged = false;
+
+                double[] guess = new double[] { smN, vmN };
+
+                double[][] jacobian = new double[][] { new double[2], new double[2] };
+                double[] derivative = new double[2];
+                double[] F = new double[2];
+
+                double dsm;
+                double dsm2;
+                double dK0;
+                double dK1;
+                double dKm;
+                double Km;
+
+                List<double[]> cs0;
+                List<double[]> cs1;
+                List<double[]> cs2;
+                List<double[]> cs3;
+
+                double e0;
+                double e1;
+
+                double g0;
+                double g1;
+                double g2;
+
+                double dK0_smN;
+                double dK1_smN;
+                double dKm_smN;
+                double Km_smN;
+
+
+                double dK0_vmN;
+                double dK1_vmN;
+                double dKm_vmN;
+                double Km_vmN;
+
+                double f0;
+                double f1;
+                double f2;
+                double f3;
+                double f4;
+                double f5;
+                double f6;
+                double f7;
+
+                double tol = 1E-6;
+                double evaluation;
+
+                do
+                {
+                    dsm = 1 / (c13 + (c14 * smN) + (smN * smN));
+                    dK0 = dsm * ((c0 * vmN) + (c1 * smN * vmN) - (k0 * s0 * smN * smN) + (c2 * smN) + c3);
+                    dK1 = dsm * ((c0 * vmN) + (c4 * smN * vmN) + (k1 * s1 * smN * smN) + (c5 * smN) + c6);
+                    dKm = dsm * smN * ((c7 * vmN) - (2 * vmN * smN) + (c8 * smN) + (c2 * smN) + c9);
+                    Km = dsm * smN * ((c10 * vmN) + (c11 * smN) + c12);
+
+                    cs0 = GeneralizedFresnelCS(3, dK0, _K0, _t0);
+                    cs1 = GeneralizedFresnelCS(3, dK1, -_K1, _t1);
+                    cs2 = GeneralizedFresnelCS(3, dKm, Km, vmN);
+                    cs3 = GeneralizedFresnelCS(3, dKm, -Km, vmN);
+
+                    e0 = cs2[0][0] + cs3[0][0];
+                    e1 = cs2[1][0] + cs3[1][0];
+
+                    F[0] = (s0 * cs0[0][0]) + (s1 * cs1[0][0]) + (smN * e0) - 2; //- 2 (dx)
+                    F[1] = (s0 * cs0[1][0]) + (s1 * cs1[1][0]) + (smN * e1); //- 0 (dz)
+
+                    dsm2 = dsm * dsm;
+
+                    g0 = -((2 * smN) + c14) * dsm2;
+                    g1 = (c13 - (smN * smN)) * dsm2;
+                    g2 = smN * ((smN * c14) + (2 * c13)) * dsm2;
+
+                    dK0_smN = (((c0 * vmN) + c3) * g0) + (((c1 * vmN) + c2) * g1) - (_K0 * g2);
+                    dK1_smN = (((c0 * vmN) + c6) * g0) + (((c4 * vmN) + c5) * g1) + (_K1 * g2);
+                    dKm_smN = (((c7 * vmN) + c9) * g1) + ((c8 - (2 * vmN)) * g2);
+                    Km_smN =  (((c10 * vmN) + c12) * g1) + c11 * g2;
+
+                    dK0_vmN = (c0 + (c1 * smN)) * dsm;
+                    dK1_vmN = (c0 + (c4 * smN)) * dsm;
+                    dKm_vmN = (c7 - (2 * smN)) * dsm * smN;
+                    Km_vmN = c10 * dsm * smN;
+
+                    f0 = -s0 * cs0[1][2] / 2;
+                    f1 = -s1 * cs1[1][2] / 2;
+                    f2 = -smN * (cs3[1][2] + cs2[1][2]) / 2;
+                    f3 = smN * (cs3[1][1] - cs2[1][1]);
+                    f4 = s0 * cs0[0][2] / 2;
+                    f5 = s1 * cs1[0][2] / 2;
+                    f6 = smN * (cs3[0][2] + cs2[0][2]) / 2;
+                    f7 = smN * (cs3[0][1] - cs2[0][1]);
+
+                    jacobian[0][0] = (f0 * dK0_smN) + (f1 * dK1_smN) + (f2 * dKm_smN) + (f3 * Km_smN) + e0;
+                    jacobian[0][1] = (f0 * dK0_vmN) + (f1 * dK1_vmN) + (f2 * dKm_vmN) + (f3 * Km_vmN) - (smN * e1);
+                    jacobian[1][0] = (f4 * dK0_smN) + (f5 * dK1_smN) + (f6 * dKm_smN) + (f7 * Km_smN) + e1;
+                    jacobian[1][1] = (f4 * dK0_vmN) + (f5 * dK1_vmN) + (f6 * dKm_vmN) + (f7 * Km_vmN) + (smN * e0);
+
+                    evaluation = Math.Sqrt((F[0] * F[0]) + (F[1] * F[1]));
+                    converged = evaluation < tol;
+                    if (converged) break;
+
+                    if (Mathc.Solver2x2.TrySolve(jacobian, F, out double[] x))
+                    {
+                        smN -= x[0];
+                        vmN -= x[1];
+                    }
+
+                    //LU factorization
+                    //https://math.libretexts.org/Bookshelves/Linear_Algebra/A_First_Course_in_Linear_Algebra_(Kuttler)/02%3A_Matrices/2.10%3A_LU_Factorization
+
+
+                } while (++u < maxIter);
+
+                if (converged)
+                {
+                    converged = !double.IsNaN(smN) && !double.IsInfinity(smN) && !double.IsNaN(vmN) && !double.IsInfinity(vmN);
+                }
+
+                if (converged)
+                {
+                    double K0 = _K0 * s0;
+                    double K1 = _K1 * s1;
+
+                    double kp0 = dK0 / (s0 * s0);
+                    double kp1 = dK1 / (s1 * s1);
+                    double kpm = dKm / (smN * smN);
+                    double km = Km / smN;
+
+
+                    //TODO: Debug this method starting with these generated arcs. Compare with G1 segment. 
+                    //build the solution parameters
+                    //first arc
+                    ClothoidSegment firstArc = new ClothoidSegment(new Vector3(-1, 0, 0), _t0, _K0, kp0, s0);
+
+                    Vector3 endpoint1 = firstArc.Endpoint;
+                    ClothoidSegment secondArc = new ClothoidSegment(endpoint1, _t0 + K0 + (dK0 / 2), km - (smN * kpm), kpm, 2 * smN);
+
+                    Vector3 endpoint2 = secondArc.Endpoint;
+                    ClothoidSegment thirdArc = new ClothoidSegment(endpoint2, _t1 - K1 - (dK1 / 2), _K1 - (s1 * kp1), kp1, s1);
+
+                    return new ClothoidCurve().AddSegments(firstArc, secondArc, thirdArc);
+                }
+
+                return new ClothoidCurve();
+            }
         }
     }
 }

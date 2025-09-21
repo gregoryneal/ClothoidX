@@ -9,8 +9,8 @@ namespace ClothoidX
     /// </summary>
     public static class ClothoidSolutionWaltonMeek
     {
-        private static readonly int MAXITER = 10;
-        private static readonly double TOL = 1E-7;
+        private const int MAXITER = 10;
+        private const double TOL = 1E-7;
         private static void Reverse(ref double phi1, ref double phi2, ref Mathc.VectorDouble P1, ref Mathc.VectorDouble D)
         {
             D = -D;
@@ -32,9 +32,9 @@ namespace ClothoidX
 
         internal class FinalParameters
         {
-            public Mathc.VectorDouble P0;
-            public Mathc.VectorDouble T0;
-            public Mathc.VectorDouble N0;
+            public Mathc.VectorDouble? P0;
+            public Mathc.VectorDouble? T0;
+            public Mathc.VectorDouble? N0;
             public double a;
             public double t1;
             public double t2;
@@ -42,46 +42,12 @@ namespace ClothoidX
             public bool reflect;
         }
 
-        /// <summary>
-        /// Extent a clothoid curve with a new endpoint and tangent angle (in radians)
-        /// </summary>
-        /// <param name="curve"></param>
-        /// <param name="x">New curve endpoint x</param>
-        /// <param name="z">new curve endpoint z</param>
-        /// <param name="t">new curve endpoint tangent in radians</param>
-        /// <returns></returns>
-        public static ClothoidCurve G1Extend(ClothoidCurve curve, double x, double z, double t)
-        {
-            return new ClothoidCurve();
-        }
-
-        /// <summary>
-        /// Helper method to get G1 curve using Posture data.
-        /// </summary>
-        /// <param name="data"></param>
-        /// <returns></returns>
         public static ClothoidCurve G1Spline(Posture[] data)
         {
             ClothoidCurve c = new ClothoidCurve();
-
             for (int i = 0; i + 1 < data.Length; i++)
             {
-                c += G1(data[i].X, data[i].Z, data[i].Angle, data[i + 1].X, data[i + 1].Z, data[i + 1].Angle);
-                //Console.WriteLine($"G1(X0: {data[i].X}, Z0: {data[i].Z}, T0: {data[i].Angle}, X1: {data[i + 1].X}, Z1: {data[i + 1].Z}, T1: {data[i + 1].Angle})");
-            }
-
-            c.Offset = data[0].PositionD;
-            c.AngleOffset = data[0].Angle;
-
-            return c;
-        }
-
-        public static ClothoidCurve2 G1Spline2(Posture[] data)
-        {
-            ClothoidCurve2 c = new ClothoidCurve2();
-            for (int i = 0; i + 1 < data.Length; i++)
-            {
-                c += G1S(data[i].PositionD, data[i].TangentD, data[i + 1].PositionD, data[i + 1].TangentD, TOL, MAXITER);
+                c += G1Segment(data[i].PositionD, data[i].Tangent, data[i + 1].PositionD, data[i + 1].Tangent, TOL, MAXITER);
                 //Console.WriteLine($"G1(X0: {data[i].X}, Z0: {data[i].Z}, T0: {data[i].Angle}, X1: {data[i + 1].X}, Z1: {data[i + 1].Z}, T1: {data[i + 1].Angle})");
             }
             /*
@@ -90,20 +56,11 @@ namespace ClothoidX
             return c;
         }
 
-        public static ClothoidCurve2 G1Spline2(List<Mathc.VectorDouble> inputPolyline)
+        public static ClothoidCurve G1Spline(List<Vector3> points, bool loop = false)
         {
-            return G1Spline2(Posture.CalculatePostures(inputPolyline).ToArray());
+            return G1Spline(Posture.CalculatePostures(points, loop).ToArray());
         }
 
-        public static ClothoidCurve G1Spline(List<Vector3> inputPolyline)
-        {
-            return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
-        }
-
-        public static ClothoidCurve G1Spline(List<Mathc.VectorDouble> inputPolyline)
-        {
-            return G1Spline(Posture.CalculatePostures(inputPolyline).ToArray());
-        }
 
         /// <summary>
         /// G1 Spline with ClothoidSegment2 as the output.
@@ -113,9 +70,9 @@ namespace ClothoidX
         /// <param name="P2"></param>
         /// <param name="T2"></param>
         /// <param name="tol"></param>
-        /// <param name="iterLim"></param>
+        /// <param name="maxIter"></param>
         /// <returns></returns>
-        public static ClothoidSegment2 G1S(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol, double iterLim)
+        public static ClothoidSegment G1Segment(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol = TOL, int maxIter = MAXITER)
         {
             Mathc.VectorDouble cacheP1 = new Mathc.VectorDouble(P1.X, 0, P1.Z);
             bool reverseFlag = false;
@@ -125,7 +82,7 @@ namespace ClothoidX
             if (d <= tol)
             {
                 //degenerate case
-                return new ClothoidSegment2(Vector3.Zero, Math.Atan2(T1.Z, T1.X), 0, 0, 0);
+                return new ClothoidSegment(Vector3.Zero, Math.Atan2(T1.Z, T1.X), 0, 0, 0);
             }
             else
             {
@@ -168,13 +125,13 @@ namespace ClothoidX
                         v = Mathc.VectorDouble.RotateAboutAxis(T2, Mathc.VectorDouble.UnitY, amt);
                         T2 = new Mathc.VectorDouble(v.X, 0, v.Z);
                     }
-                    return G1S(P1, T1, P2, T2, tol, iterLim);
+                    return G1Segment(P1, T1, P2, T2, tol, maxIter);
                 }
                 else if (Math.Abs(phi1) <= tol && Math.Abs(phi2) <= tol)
                 {
                     //straight line segment
                     //TODO: Rotate the line segment to actually interpolate the points between p1 and p2
-                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), 0, 0, D.Length);
+                    ClothoidSegment s = new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), 0, 0, D.Length);
                     return s;
                 }
                 else if (Math.Abs(phi2 - phi1) <= tol)
@@ -188,16 +145,12 @@ namespace ClothoidX
                     if (reverseFlag) k *= -1;
                     if (reflectFlag) k *= -1;
 
-                    /*ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
-                    c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);*/
-
-                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
+                    ClothoidSegment s = new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
                     return s;
                 }
                 else
                 {
-                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag);
+                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag, tol, maxIter);
                     L = f.a * Math.Abs(f.t2 - f.t1);
                     dk = Math.PI / (f.a * f.a);
                     if (reverseFlag)
@@ -214,11 +167,7 @@ namespace ClothoidX
                         dk *= -1;
                     }
 
-                    /*
-                    ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
-                    c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);*/
-                    ClothoidSegment2 s = new ClothoidSegment2(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
+                    ClothoidSegment s = new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, L);
                     return s;
                 }
 
@@ -245,7 +194,7 @@ namespace ClothoidX
         /// <param name="z1">end position z</param>
         /// <param name="t1">end tangent angle</param>
         /// <returns></returns>
-        public static ClothoidCurve G1(double x0, double z0, double t0, double x1, double z1, double t1)
+        public static ClothoidCurve G1Segment(double x0, double z0, double t0, double x1, double z1, double t1)
         {
             Mathc.VectorDouble P1 = new Mathc.VectorDouble(x0, 0, z0);
             Mathc.VectorDouble T = Mathc.VectorDouble.RotateAboutAxis(Mathc.VectorDouble.UnitX, Mathc.VectorDouble.UnitY, -t0);
@@ -277,9 +226,9 @@ namespace ClothoidX
         /// <param name="P2">the end position</param>
         /// <param name="T2">the end tangent vector</param>
         /// <param name="tol">solution tolerance</param>
-        /// <param name="iterLim">maximum newton iterations</param>
+        /// <param name="maxIter">maximum newton iterations</param>
         /// <returns></returns>
-        public static ClothoidCurve G1(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol, double iterLim)
+        public static ClothoidCurve G1(Mathc.VectorDouble P1, Mathc.VectorDouble T1, Mathc.VectorDouble P2, Mathc.VectorDouble T2, double tol, int maxIter)
         {
             Mathc.VectorDouble cacheP1 = new Mathc.VectorDouble(P1.X, 0, P1.Z);
             bool reverseFlag = false;
@@ -332,15 +281,15 @@ namespace ClothoidX
                         v = Mathc.VectorDouble.RotateAboutAxis(T2, Mathc.VectorDouble.UnitY, amt);
                         T2 = new Mathc.VectorDouble(v.X, 0, v.Z);
                     }
-                    return G1(P1, T1, P2, T2, tol, iterLim);
+                    return G1(P1, T1, P2, T2, tol, maxIter);
                 }
                 else if (Math.Abs(phi1) <= tol && Math.Abs(phi2) <= tol)
                 {
                     //straight line segment
                     //TODO: Rotate the line segment to actually interpolate the points between p1 and p2
-                    ClothoidCurve c = new ClothoidCurve().AddLine(D.Length);
-                    c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
+                    ClothoidCurve c = new ClothoidCurve().AddSegment(new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), 0, 0, D.Length));
+                    //c.Offset = cacheP1;
+                    //c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
                 else if (Math.Abs(phi2 - phi1) <= tol)
@@ -354,14 +303,14 @@ namespace ClothoidX
                     if (reverseFlag) k *= -1;
                     if (reflectFlag) k *= -1;
 
-                    ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
-                    c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
+                    ClothoidCurve c = new ClothoidCurve().AddSegment(new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, D.Length));
+                    //c.Offset = cacheP1;
+                    //c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
                 else
                 {
-                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag);
+                    FinalParameters f = FitEuler(P1, D / d, d, phi1, phi2, reflectFlag, tol, maxIter);
                     L = f.a * Math.Abs(f.t2 - f.t1);
                     dk = Math.PI / (f.a * f.a);
                     if (reverseFlag)
@@ -378,16 +327,16 @@ namespace ClothoidX
                         dk *= -1;
                     }
 
-                    ClothoidCurve c = new ClothoidCurve() + new ClothoidSegment(k, dk, L);
-                    c.Offset = cacheP1;
-                    c.AngleOffset = Math.Atan2(T1.Z, T1.X);
+                    ClothoidCurve c = new ClothoidCurve().AddSegment(new ClothoidSegment(cacheP1, Math.Atan2(T1.Z, T1.X), k, dk, D.Length));
+                    //c.Offset = cacheP1;
+                    //c.AngleOffset = Math.Atan2(T1.Z, T1.X);
                     return c;
                 }
 
             }
         }
 
-        private static FinalParameters FitEuler(Mathc.VectorDouble P1, Mathc.VectorDouble T, double d, double phi1, double phi2, bool reflect)
+        private static FinalParameters FitEuler(Mathc.VectorDouble P1, Mathc.VectorDouble T, double d, double phi1, double phi2, bool reflect, double tol, int maxIter)
         {
             bool failed = true;
             double theta = 0;
@@ -402,7 +351,7 @@ namespace ClothoidX
             if (phi1 > 0 && h <= 0)
             {
                 //C shaped
-                if (h > TOL)
+                if (h > tol)
                 {
                     //solution theta = 0
                 }
@@ -411,7 +360,7 @@ namespace ClothoidX
                     double l = (1 - Math.Cos(phi1)) / (1 - Math.Cos(phi2));
                     double l2 = l * l;
                     theta0 = (l2 / (1 - l2)) * (phi1 + phi2);
-                    failed = Solve(0, theta0, phi1, phi2, segno, out theta);
+                    failed = Solve(0, theta0, phi1, phi2, segno, tol, maxIter, out theta);
                 }
             }
             else
@@ -419,7 +368,7 @@ namespace ClothoidX
                 segno = -1;
                 theta0 = Math.Max(0, -phi1);
                 theta1 = (Math.PI / 2) - phi1;
-                failed = Solve(theta0, theta1, phi1, phi2, segno, out theta);
+                failed = Solve(theta0, theta1, phi1, phi2, segno, tol, maxIter, out theta);
             }
 
             t1 = segno * Math.Sqrt(2 * theta / Math.PI);
@@ -458,7 +407,7 @@ namespace ClothoidX
             };
         }
 
-        private static bool Solve(double a, double b, double phi1, double phi2, int segno, out double theta)
+        private static bool Solve(double a, double b, double phi1, double phi2, int segno, double tol, int maxIter, out double theta)
         {
             Evaluate(a, phi1, phi2, segno, out double fa, out double dfa);
             Evaluate(b, phi1, phi2, segno, out double fb, out double dfb);
@@ -469,10 +418,10 @@ namespace ClothoidX
             bool newtonFail;
             double solution;
             double d;
-            while (err > TOL && ++u < MAXITER)
+            while (err > tol && ++u < maxIter)
             {
                 newtonFail = true;
-                if (Math.Abs(df) > TOL)
+                if (Math.Abs(df) > tol)
                 {
                     solution = theta - (f / df);
                     d = Math.Abs(theta - solution);
@@ -503,7 +452,7 @@ namespace ClothoidX
                 Evaluate(theta, phi1, phi2, segno, out f, out df);
             }
 
-            if (u >= MAXITER) return false;
+            if (u >= maxIter) return false;
             return true;
         }
 
