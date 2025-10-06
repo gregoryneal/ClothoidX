@@ -876,7 +876,7 @@ namespace ClothoidX
                         if (System.Math.Abs(v) < 1.0e-8) v = 0.0;    // hack
                         rowString += v.ToString("F" + decimalPlaces).PadLeft(padWidth);
                     }
-                    //Console.WriteLine(rowString);
+                    Console.WriteLine(rowString);
                 }
             }
 
@@ -1002,11 +1002,11 @@ namespace ClothoidX
         /// </summary>
         public class VectorDouble
         {
-            public static readonly VectorDouble Zero = new VectorDouble(0, 0, (double)0);
-            public static readonly VectorDouble One = new VectorDouble(1, 1, (double)1);
-            public static readonly VectorDouble UnitY = new VectorDouble(0, 1, (double)0);
-            public static readonly VectorDouble UnitX = new VectorDouble(1, 0, (double)0);
-            public static readonly VectorDouble UnitZ = new VectorDouble(0, 0, (double)1);
+            public static readonly VectorDouble Zero = new VectorDouble(0, 0, 0);
+            public static readonly VectorDouble One = new VectorDouble(1, 1, 1);
+            public static readonly VectorDouble UnitY = new VectorDouble(0, 1, 0);
+            public static readonly VectorDouble UnitX = new VectorDouble(1, 0, 0);
+            public static readonly VectorDouble UnitZ = new VectorDouble(0, 0, 1);
 
             public double X { get => _vals[0]; }
             public double Y { get => _vals[1]; }

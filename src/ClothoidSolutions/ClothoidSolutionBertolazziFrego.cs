@@ -578,9 +578,9 @@ namespace ClothoidX
                 points.Add(EvalArcLength(s, curvature, sharpness, startAngle, start));
             }
             //add final point
-            points.Add(EvalArcLength(arcLength, curvature, sharpness, startAngle, start));
+            //points.Add(EvalArcLength(arcLength, curvature, sharpness, startAngle, start));
             return points;
-        }
+        }  
 
         public static Mathc.VectorDouble EvalArcLength(double arcLength, double curvature, double sharpness, double startAngle, Mathc.VectorDouble start)
         {

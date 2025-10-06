@@ -107,7 +107,7 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// Create a copy of a ClothoidCurve2 object. 
+        /// Create a copy of a ClothoidCurve object. 
         /// </summary>
         /// <param name="curve"></param>
         public ClothoidCurve(ClothoidCurve curve) : this(CopySegments(curve), curve.inputPolyline)
@@ -153,12 +153,28 @@ namespace ClothoidX
         /// </summary>
         /// <param name="curveCM"></param>
         /// <param name="polylineCM"></param>
-        /// <param name="bestRotate"></param>
-        public void AddBestFitTranslationRotation(Mathc.VectorDouble curveCM, Mathc.VectorDouble polylineCM, double[][] bestRotate)
+        /// <param name="rotationMatrix"></param>
+        public void AddBestFitTranslationRotation(Mathc.VectorDouble curveCM, Mathc.VectorDouble polylineCM, double[][] rotationMatrix)
         {
-            foreach (ClothoidSegment segment2 in segments)
+            Console.WriteLine($"New Rotation matrix: ");
+            for (int i = 0; i < rotationMatrix.Length; i++)
             {
-                segment2.AddBestFitTranslationRotation(curveCM, polylineCM, bestRotate);
+                Console.WriteLine();
+                Console.Write("[");
+                for (int j = 0; j < rotationMatrix[i].Length; j++)
+                {
+                    Console.Write($"{rotationMatrix[i][j]}");
+                    if (j < rotationMatrix[i].Length - 1) Console.Write(",");
+                }
+                Console.Write("]");
+            }
+            Console.WriteLine();
+            //Mathc.SVDJacobiProgram.MatShow(this.rotationMatrix);
+            Console.WriteLine($"Curve Center Mass: {curveCM.ToString()}");
+            Console.WriteLine($"Polyline Center Mass: {polylineCM.ToString()}");
+            foreach (ClothoidSegment segment in segments)
+            {
+                segment.AddBestFitTranslationRotation(curveCM, polylineCM, rotationMatrix);
             }
         }
 
@@ -247,6 +263,14 @@ namespace ClothoidX
         public float GetStartingArcLengthFromPolylineIndex(int polylineIndex)
         {
             return EstimateArcLength(polylineIndex);
+        }
+
+        public void ChangeSolutionType(SolutionType newDrawingMethod)
+        {
+            foreach (ClothoidSegment segment in segments)
+            {
+                segment.ChangeSolutionType(newDrawingMethod);
+            }
         }
 
         protected float EstimateArcLength(Vector3 node)

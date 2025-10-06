@@ -97,6 +97,8 @@ namespace ClothoidX
         /// This determines the clothoid segment parameters. All clothoids are calculated first in "standard" form. 
         /// That is, from the origin with the initial tangent positioned along the positive x axis. 
         /// To connect them we must apply a rotation, a mirror, and then a translation.
+        /// 
+        /// Note: Do not change the default SolutionType unless you know what you are doing. 
         /// </summary>
         /// <param name="arcLengthStart"></param>
         /// <param name="arcLengthEnd"></param>
@@ -517,6 +519,11 @@ namespace ClothoidX
 
             s += $"\nMy total arc length is {TotalArcLength}.";
             return s;
+        }
+
+        public void ChangeSolutionType(SolutionType newType)
+        {
+            SolutionType = newType;
         }
     }
 }

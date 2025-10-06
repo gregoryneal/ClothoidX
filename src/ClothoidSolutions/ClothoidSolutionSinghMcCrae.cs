@@ -33,36 +33,56 @@ namespace ClothoidX
         ///   done to address this yet.
         /// - This method might be better suited for batching the spline generation. With a large number of nodes, the method becomes unstable.
         ///   For instance, split the polyline into segments with some maximum arc length, and join all of those curves together.
+        /// - As of 9/21/2025 these methods are broken and need to be reworked. This is on my immediate TODO list.
         /// </summary>
-        public static ClothoidCurve G2Spline(List<Vector3> polyline)
+        public static ClothoidCurve G2Spline(List<Vector3> points, bool loop = false)
         {
-            if (polyline.Count < 3) return new ClothoidCurve();
+            Console.WriteLine("Solving G2 Spline for points:");
+            for (int i = 0; i < points.Count; i++)
+            {
+                Console.WriteLine(points[i]);
+            }
+
+            Console.WriteLine($"Loop: {loop}");
+
+            if (points.Count < 1) return new ClothoidCurve();
+            if (loop) points.Add(points[0]);
+            if (points.Count < 3) return new ClothoidCurve();
             //this maps polyline nodes to their respective arc length curvature point (you can also use postures here but this is how SinghMcCrae do it)
             List<Vector3> lkNodes = new List<Vector3>();
             Vector3 lkNode;
 
             //for each polyline node we need to calculate its arc length and curvature, we store those in the xz values of a Vector3
-            for (int i = 0; i < polyline.Count; i++)
+            for (int i = 0; i < points.Count; i++)
             {
-                lkNode = GetLKPositionAtPolylineIndex(lkNodes, polyline, i);
+                lkNode = GetLKPositionAtPolylineIndex(lkNodes, points, i);
                 if (float.IsNaN(lkNode.X) || float.IsNaN(lkNode.Z)) continue;
                 lkNodes.Add(lkNode);
             }
             //run the segmenting algorithm given by Singh & McCrae to regress the LK graph into approximate linear segments.
             List<Vector3> segmentedNodes = SegmentedRegression3(lkNodes, .01f);
+            for (int i = 0; i < segmentedNodes.Count; i++)
+            {
+                Console.WriteLine($"(arc length, 0, curvature) segment node {i}: {segmentedNodes[i]}");
+            }
             //build the initial curve from the segments, this is in local space so it doesn't line up with our polyline yet.
-            ClothoidCurve c = FromLKGraph(segmentedNodes, polyline);
+            ClothoidCurve c = FromLKGraph(segmentedNodes, points);
 
             //sample the actual curve at the estimated node arc lengths
             List<Vector3> curveSamples = GetCurveSamples(c, lkNodes);
+
+            for (int i = 0; i < curveSamples.Count; i++)
+            {
+                Console.WriteLine($"(x, y, z) curve sample {i}: {curveSamples[i]}");
+            }
             //center of mass of the polyline and curve as they currently sit
-            List<Vector3> centerOfMass = GetCenterOfMass(polyline, curveSamples, 1);
+            List<Vector3> centerOfMass = GetCenterOfMass(points, curveSamples, 1);
 
             //Vector3 startPosition = polyline[0];
 
 
             //get the rotation matrix required to align the two curves
-            double[][] rotationMatrix = GetRotationMatrix(polyline, curveSamples, centerOfMass[0], centerOfMass[1]);
+            double[][] rotationMatrix = GetRotationMatrix(points, curveSamples, centerOfMass[0], centerOfMass[1]);
             //use the rotation matrix to find the rotation angle
             //double angle = Math.Acos(rotationMatrix[0][0]);
             c.AddBestFitTranslationRotation(centerOfMass[0].ToVD(), centerOfMass[1].ToVD(), rotationMatrix);
@@ -70,7 +90,7 @@ namespace ClothoidX
         }
 
         /// <summary>
-        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a ClothoidCurve2 with N-1 ClothoidSegment2s.
+        /// Helper function to convert a list of N Vector3(arcLength, 0, curvature) into a ClothoidCurve with N-1 ClothoidSegments.
         /// </summary>
         /// <param name="lkNodes"></param>
         /// <returns></returns>
@@ -176,6 +196,20 @@ namespace ClothoidX
         /// <returns></returns>
         public static Vector3 EvalAtArcLength(double arcLength, ClothoidSegment c, Vector3 cmCurve, Vector3 cmPolyline, double[][] rotationMatrix)
         {
+            Console.WriteLine($"ROTMAT: ");
+            for (int i = 0; i < rotationMatrix.Length; i++)
+            {
+                Console.WriteLine();
+                Console.Write("[");
+                for (int j = 0; j < rotationMatrix[i].Length; j++)
+                {
+                    Console.Write($"{rotationMatrix[i][j]}");
+                    if (j < rotationMatrix[i].Length - 1) Console.Write(",");
+                }
+                Console.Write("]");
+            }
+
+            Console.WriteLine($"CMCURVE: {cmCurve} | CMPOYLINE: {cmPolyline}");
             Vector3 sample = SampleSegmentLocalSpace(arcLength, c);
             //apply the rotation and translation to the sample
             sample -= cmCurve;
@@ -210,7 +244,7 @@ namespace ClothoidX
 
         public static Mathc.VectorDouble SampleSegmentLocalSpace(double arcLength, ClothoidSegment segment)
         {
-            if (arcLength > segment.ArcLengthEnd || arcLength < segment.ArcLengthStart) throw new ArgumentOutOfRangeException();
+            //if (arcLength > segment.ArcLengthEnd || arcLength < segment.ArcLengthStart) throw new ArgumentOutOfRangeException();
             Mathc.VectorDouble v;
             double interp = (arcLength - segment.ArcLengthStart) / segment.TotalArcLength;
             switch (segment.LineType)
@@ -337,17 +371,35 @@ namespace ClothoidX
         private static List<Vector3> GetCurveSamples(ClothoidCurve c, List<Vector3> lkNodes)
         {
             List<Vector3> curveSamples = new List<Vector3>();
+            /*
             for (int i = 0; i < lkNodes.Count; i++)
             {
                 Vector3 node = lkNodes[i];
                 Vector3 sample;
                 //hack - for some reason sampling 0 here gives matrix non conformity error. 
                 //TODO: fix the above error
+                
                 if (node.X == 0) sample = c.SampleCurveFromArcLength(node.X);
-                else sample = c.SampleCurveFromArcLength(0.001);
+                else sample = c.SampleCurveFromArcLength(1E-5);
+                
+                
                 curveSamples.Add(sample);
+            }
+            */
 
-                //UnityEngine.Debug.Log($"Sampling curve: {i}, {node}, {sample}");
+            double l;
+            double k;
+            for (int i = 0; i < lkNodes.Count; i++)
+            {
+                l = lkNodes[i].X;
+                k = lkNodes[i].Z;
+                for (int j = 0; j < c.Count; j++)
+                {
+                    if (l >= c[j].ArcLengthStart && l <= c[j].ArcLengthEnd)
+                    {
+                        curveSamples.Add(c[j].SampleClothoidLocal((l - c[j].ArcLengthStart) / (c[j].TotalArcLength)));
+                    }
+                }
             }
             return curveSamples;
         }
@@ -444,9 +496,6 @@ namespace ClothoidX
             return totalError;
         }
 
-        /// <summary>
-        /// This function will perform linear regression on all the points between a and b in the dataList. The function returns 
-        /// </summary>
         private static bool HeightLineFit(Vector3 a, Vector3 b, List<Vector3> dataList, out float aMatrixValue, out float bMatrixValue)
         {
             int indA = dataList.IndexOf(a);
